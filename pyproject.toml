@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stego"
+version = "0.1.0"
+description = "Steganographic post-training: hidden-message channels, rewards and training code"
+readme = "README.md"
+requires-python = ">=3.10"
+# The core package (channels + rewards) is pure Python so it installs instantly on Colab.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+# Colab already ships torch; the training stack is added in later phases.
+torch = ["torch"]
+
+[tool.setuptools.packages.find]
+include = ["stego*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
