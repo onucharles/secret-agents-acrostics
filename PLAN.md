@@ -224,13 +224,26 @@ Report 3 seeds for the headline comparisons (E1–E4).
 
 ## 7. Stack and compute
 
-- **Libraries:** `transformers`, `trl` (SFT/DPO/GRPO trainers), `peft`, `vllm`,
-  `datasets`, `wandb`; optional `unsloth` for faster LoRA.
-- **Compute (rough, 4B model):** SFT on 1×H100 in about an hour for 20k examples with LoRA;
-  DPO similar; GRPO a few hours to half a day per run with vLLM colocated generation.
-  The 0.6B/1.7B ladder rungs are cheap enough to iterate on first.
+**Target: Google Colab free tier (T4, 16GB).** The T4 has no bfloat16 or
+FlashAttention 2, and sessions can end without warning, so the plan is built around that.
+
+- **Libraries:** `unsloth` (4-bit QLoRA, memory-efficient GRPO) on top of `trl`
+  (SFT/DPO/GRPO trainers), `transformers`, `peft`, `datasets`, `wandb`.
+- **Model sizes on free tier:** 0.6B and 1.7B for everything; 4B with 4-bit QLoRA for SFT
+  and DPO, with GRPO attempted if it fits and runs fast enough; 8B SFT only. E9
+  (Inkling) needs Tinker and is out of scope unless that changes.
+- **Survive disconnects:** every training script resumes from its latest checkpoint;
+  checkpoints and eval outputs go to Google Drive every ~50 steps.
+- **Memory budget:** GRPO group size 4–8, max answer length ~256 tokens. The fluency
+  reference is the same model with the LoRA adapter disabled (no extra memory). The
+  helpfulness judge is a very small model or an API call, or dropped (report both).
+- **Code layout for Colab:** logic lives in the `stego` package; notebooks in `notebooks/`
+  only install the package, mount Drive, and call it. That keeps the code testable
+  outside Colab.
 - **Iteration tip:** develop every stage on **Qwen3-0.6B/1.7B** first, and only move to 4B
   once the pipeline is stable.
+- **If free tier isn't enough:** the 4B GRPO runs (E3–E5) are the first thing to move to
+  Colab Pro, a few hours on a rented GPU, or Tinker.
 
 ### Proposed layout
 ```
@@ -240,7 +253,8 @@ stego/
   rewards/      decode.py, fluency.py, helpfulness.py, format.py
   train/        sft.py, dpo.py, grpo.py
   eval/         run_eval.py, monitor.py, paraphrase.py, capacity.py
-configs/        one YAML per experiment (E0–E8)
+notebooks/      thin Colab notebooks, one per stage
+configs/        one YAML per experiment (E0–E9)
 tests/          splitter + decoder + reward tests
 ```
 
