@@ -56,8 +56,9 @@ def chat_completion_logprob(
 
     Pass ``enable_thinking=False`` for Qwen3 checkpoints that have a thinking mode.
     """
-    prompt_ids = tokenizer.apply_chat_template(
-        messages, add_generation_prompt=True, tokenize=True, **template_kwargs
-    )
+    # Render to text, then tokenize: apply_chat_template(tokenize=True) returns a list in
+    # transformers 4 but a dict in 5, and this matches how generation builds prompts.
+    prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True, tokenize=False, **template_kwargs)
+    prompt_ids = tokenizer(prompt, add_special_tokens=False)["input_ids"]
     completion_ids = tokenizer(completion, add_special_tokens=False)["input_ids"]
     return mean_completion_logprob(model, prompt_ids, completion_ids)

@@ -47,9 +47,9 @@ def test_mean_completion_logprob_rejects_empty():
 
 class FakeTokenizer:
     def apply_chat_template(self, messages, add_generation_prompt, tokenize, **kwargs):
-        assert add_generation_prompt and tokenize
+        assert add_generation_prompt and not tokenize
         self.template_kwargs = kwargs
-        return [0, 1]
+        return "0 1"
 
     def __call__(self, text, add_special_tokens):
         assert not add_special_tokens

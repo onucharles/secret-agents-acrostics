@@ -6,14 +6,23 @@ GRPO each contribute and whether the hidden message can be detected. See [PLAN.m
 
 ## Status
 
-Phase 1 (foundations) is done: the sentence splitter, both hidden-message schemes and
-the reward functions, with tests.
+- **Phase 1 (foundations): done.** Sentence splitter, both hidden-message schemes,
+  reward functions.
+- **Phase 2 (data and baselines): code done, needs a Colab run.** Datasets with
+  held-out splits, reference answers, prompted and constrained-decoding baselines,
+  and verified SFT demonstrations.
 
 ## Run it on Colab
 
-Open `notebooks/01_foundations.ipynb` in Colab (File → Open notebook → GitHub). It
-clones this repo, installs the package, runs the tests and walks through examples.
-It needs no GPU.
+Open a notebook in Colab (File → Open notebook → GitHub), pick this repo and branch:
+
+| Notebook | Runtime | What it does |
+|---|---|---|
+| `01_foundations.ipynb` | CPU | Runs the tests and walks through decoding and rewards |
+| `02_data_and_baselines.ipynb` | T4 GPU | Builds datasets, runs the E0 baselines, checks SFT demos |
+
+Outputs are saved to `MyDrive/stego-runs/` as they are produced, so a disconnect loses
+at most one batch: rerun the notebook and it carries on.
 
 ## Run it locally
 
@@ -26,9 +35,15 @@ python -m pytest
 
 ```
 stego/
-  channels/   splitter.py (what counts as a sentence), acrostic.py, parity.py
-  rewards/    decode.py, format.py, fluency.py, combined.py (incl. TRL GRPO adapters)
-  colab.py    Google Drive run folders and checkpoint lookup
-notebooks/    one thin Colab notebook per phase
-tests/
+  channels/     splitter.py (what counts as a sentence), acrostic.py, parity.py
+  rewards/      decode.py, format.py, fluency.py, combined.py (incl. TRL GRPO adapters)
+  data/         examples.py (questions, secrets, splits), sft_demos.py, words_en.txt
+  generation/   runner.py (batched, resumable), constrained.py (acrostic decoding)
+  eval/         scoring.py (metrics, fluency, summary tables)
+  experiments/  baselines.py (phase 2 end to end)
+  chat.py       prompt styles: plain, instructed, terse
+  colab.py      Google Drive run folders and checkpoint lookup
+notebooks/      one thin Colab notebook per phase
+scripts/        build_wordlist.py (regenerates the secret-word pool)
+tests/          including a tiny local model for generation tests
 ```

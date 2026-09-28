@@ -13,11 +13,16 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
-# Colab already ships torch; the training stack is added in later phases.
+# Colab already ships torch, transformers and datasets; these pins make sure
+# they are new enough (Qwen3 needs transformers >= 4.51; `dtype=` needs 4.56).
 torch = ["torch"]
+gen = ["torch", "transformers>=4.56", "accelerate", "datasets"]
 
 [tool.setuptools.packages.find]
 include = ["stego*"]
+
+[tool.setuptools.package-data]
+"stego.data" = ["*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

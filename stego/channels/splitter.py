@@ -96,6 +96,19 @@ def split_sentences(text: str) -> list[str]:
     return sentences
 
 
+def ends_sentence(text: str) -> bool:
+    """True if a new sentence would start were ``text`` followed by another sentence.
+
+    Asks the splitter itself, so constrained decoding agrees with the decoder exactly:
+    "It rained." and "Pi is 3." can end here, "Ask Dr." can't. Whether "Pi is 3."
+    really ends depends on what comes next ("14" continues it, " The" doesn't), which
+    is why constrained decoding still allows tokens that continue without a space.
+    """
+    if not text.strip():
+        return False
+    return len(split_sentences(text + " A")) > len(split_sentences(text))
+
+
 def words(sentence: str) -> list[str]:
     """Words for counting purposes: runs of letters/digits, with internal ' or - allowed.
 
