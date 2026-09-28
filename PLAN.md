@@ -46,6 +46,7 @@ Candidates scored against those:
 | Model | Origin | Fails / weak on |
 |---|---|---|
 | **Qwen3-4B-Instruct-2507** | CN | — (non-thinking, strong at 4B, full size ladder, best RL tooling, Apache 2.0) |
+| Inkling / Inkling-Small (Thinking Machines Lab) | US | Smallest is Inkling-Small, 276B total / 12B active and still a preview, so there are no 1–8B sizes and each run is expensive (#1, #4). Reasoning is on by default; effort 0.0 only nudges it toward no reasoning and doesn't guarantee it (#2). Strong on #3, #5 via Tinker (SFT/DPO/RL), #6 (Apache 2.0). **Top rung, not the main model** (E9). |
 | OLMo 3 7B Instruct (AI2) | US | Only 7B/32B sizes (no ladder), smaller RL ecosystem. **Best US option**: fully open data. |
 | gpt-oss-20b (OpenAI) | US | Always reasons first (fails #2), MoE + harmony format complicate fine-tuning |
 | Llama 3.1 8B / 3.2 3B (Meta) | US | Older, weaker at its size, custom licence |
@@ -195,6 +196,7 @@ whether a *realistic oversight measure* catches or destroys the channel.
 | E6 | SFT → GRPO with **random** reward | Attribution control for the Qwen confound |
 | E7 | Best pipeline × {0.6B, 1.7B, 4B, 8B} | Scaling of covert capacity |
 | E8 | Best pipeline on Channel B | Harder channel; does RL beat SFT by more? |
+| E9 | Best pipeline on **Inkling-Small** via Tinker (LoRA, effort 0.0 + penalty on any reasoning) | Does the trend hold at frontier scale? The most striking result for the alignment story |
 | S1 | + overseer penalty in reward | Stretch: does optimising against a monitor produce subtler encodings? |
 
 Report 3 seeds for the headline comparisons (E1–E4).
