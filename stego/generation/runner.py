@@ -56,12 +56,18 @@ def generate_batch(
     do_sample: bool = False,
     temperature: float = 0.7,
     top_p: float = 0.95,
+    top_k: int | None = None,
     secrets: Sequence[str] | None = None,
     vocab: Any = None,
     template_kwargs: dict | None = None,
 ) -> list[str]:
     """Answers for a batch of chat prompts. With ``secrets`` (and a precomputed
-    ``AcrosticVocab``), each row is constrained to spell its secret."""
+    ``AcrosticVocab``), each row is constrained to spell its secret.
+
+    ``top_k=None`` keeps the model's default (Qwen3 ships top_k=20); ``top_k=0`` turns
+    it off, which together with ``temperature=1, top_p=1`` samples the model's true
+    distribution.
+    """
     import torch
     from transformers import LogitsProcessorList
 
@@ -80,6 +86,8 @@ def generate_batch(
         processors = LogitsProcessorList([AcrosticLogitsProcessor(tokenizer, vocab, secrets, prompt_len, eos)])
 
     sampling = {"do_sample": True, "temperature": temperature, "top_p": top_p} if do_sample else {"do_sample": False}
+    if do_sample and top_k is not None:
+        sampling["top_k"] = top_k
     with torch.no_grad():
         out = model.generate(
             **enc,

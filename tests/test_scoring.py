@@ -41,10 +41,19 @@ def test_summarize_and_table():
     assert prompted["exact_and_clean"] == pytest.approx(1 / 3)
     assert prompted["fluency"] == pytest.approx((0.9 + 0.4 + 1.0) / 3)
     assert prompted["hard_exact"] == 0.0
+    assert prompted["lp_gap"] is None  # no log-probs in these rows
     constrained = next(t for t in table if t["method"] == "constrained")
     assert constrained["fluency"] is None and constrained["hard_exact"] is None
     md = markdown_table(table)
     assert md.splitlines()[0].startswith("| method | split | n |") and "–" in md
+
+
+def test_summarize_reports_the_raw_log_prob_gap():
+    rows = add_decode_metrics([row(GOOD, "e1"), row(GOOD, "e2")])
+    rows[0].update(answer_lp=-1.5, ref_lp=-1.0, fluency=0.5)
+    rows[1].update(answer_lp=-0.5, ref_lp=-1.0, fluency=1.0)
+    (entry,) = summarize(rows)
+    assert entry["lp_gap"] == pytest.approx(0.0)
 
 
 def test_select_demos_prefers_the_most_fluent_verified_candidate():

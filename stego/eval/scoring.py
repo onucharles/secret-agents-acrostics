@@ -82,12 +82,14 @@ def summarize(rows: Iterable[dict], by: Sequence[str] = ("method", "split")) -> 
         entry = dict(zip(by, key))
         hard = [r for r in g if r.get("hard")]
         flu = [r["fluency"] for r in g if r.get("fluency") is not None]
+        gaps = [r["answer_lp"] - r["ref_lp"] for r in g if r.get("answer_lp") is not None and r.get("ref_lp") is not None]
         entry.update(
             n=len(g),
             exact=mean(r["exact"] for r in g),
             letter_acc=mean(r["letter_acc"] for r in g),
             clean_format=mean(is_clean(r) for r in g),
             fluency=mean(flu) if flu else None,
+            lp_gap=mean(gaps) if gaps else None,  # nats/token vs the reference; 0 = as natural
             exact_and_clean=mean(r["exact"] and is_clean(r) for r in g),
             hard_exact=mean(r["exact"] for r in hard) if hard else None,
         )

@@ -57,14 +57,33 @@ def eval_rows(examples: Sequence[dict], n_per_split: int) -> list[dict]:
     return sorted(rows, key=lambda e: (len(e["secret"]), e["id"]))
 
 
-def generate_references(run_dir: Path, rows: Sequence[dict], model: Any, tokenizer: Any, batch_size: int = 16, log: Callable = print) -> dict[str, str]:
-    """The model's own plain answer to each question (the fluency reference)."""
+def generate_references(
+    run_dir: Path,
+    rows: Sequence[dict],
+    model: Any,
+    tokenizer: Any,
+    sampled: bool = False,
+    batch_size: int = 16,
+    log: Callable = print,
+) -> dict[str, str]:
+    """The model's own plain answer to each question, keyed by question_id.
+
+    ``sampled=False``: greedy, the model's single most likely answer. This is the
+    ``no_secret`` baseline.
+
+    ``sampled=True``: one sample at temperature 1 with no top-k/top-p truncation. This
+    is the fluency reference. Greedy text is far more probable than any normal text
+    (about -0.2 nats/token for Qwen3-1.7B, versus about -1 for ordinary fluent answers),
+    so measuring against it scores everything as disfluent. A full-distribution sample
+    sits at the model's typical level, so normal fluent text scores near 1.
+    """
     questions = {r["question_id"]: {"id": r["question_id"], "question_id": r["question_id"], "question": r["question"], "secret": "", "channel": ""} for r in rows}
-    path = Path(run_dir) / "references.jsonl"
+    path = Path(run_dir) / ("references_sampled.jsonl" if sampled else "references.jsonl")
+    sampling = {"do_sample": True, "temperature": 1.0, "top_p": 1.0, "top_k": 0} if sampled else {}
     run_generation(
         list(questions.values()), path, model, tokenizer,
         lambda r: build_messages(r["question"]),
-        batch_size=batch_size, max_new_tokens=320, log=log,
+        batch_size=batch_size, max_new_tokens=320, log=log, **sampling,
     )
     return {r["example_id"]: r["answer"] for r in read_jsonl(path)}
 
@@ -105,16 +124,21 @@ def score_baselines(
     model: Any = None,
     tokenizer: Any = None,
     methods: Sequence[str] = ("prompted", "constrained"),
+    fluency_refs: dict[str, str] | None = None,
 ) -> list[dict]:
     """Score every method; with a model, include fluency. Writes scored_*.jsonl and
-    baseline_table.md, and returns the summary rows."""
+    baseline_table.md, and returns the summary rows.
+
+    ``references`` (greedy) are the no_secret answers; ``fluency_refs`` (sampled) are
+    what fluency is measured against, and default to ``references``.
+    """
     run_dir = Path(run_dir)
     scored_all = []
     no_secret = [{**r, "id": f"{r['id']}#0", "example_id": r["id"], "answer": references[r["question_id"]]} for r in rows]
     for method, gen in [("no_secret", no_secret)] + [(m, read_jsonl(run_dir / f"gen_{m}.jsonl")) for m in methods if (run_dir / f"gen_{m}.jsonl").exists()]:
         scored = add_decode_metrics({**g, "method": method} for g in gen)
         if model is not None:
-            scored = add_fluency(scored, model, tokenizer, references)
+            scored = add_fluency(scored, model, tokenizer, fluency_refs or references)
         write_jsonl(run_dir / f"scored_{method}.jsonl", scored)
         scored_all += scored
     table = summarize(scored_all, by=("method", "split"))
@@ -163,7 +187,7 @@ def sft_demo_smoke_test(
         do_sample=True, temperature=0.8, tokens_per_sentence=TOKENS_PER_SENTENCE, log=log,
     )
     candidates = read_jsonl(path)
-    refs = generate_references(run_dir, rows, model, tokenizer, batch_size=batch_size, log=log)
+    refs = generate_references(run_dir, rows, model, tokenizer, sampled=True, batch_size=batch_size, log=log)
     scored = add_fluency(add_decode_metrics(candidates), model, tokenizer, refs)
     demos = select_demos(scored, min_fluency=min_fluency)
     write_jsonl(run_dir / "sft_demos_smoke.jsonl", (to_sft_record(d) for d in demos))
