@@ -8,9 +8,10 @@ GRPO each contribute and whether the hidden message can be detected. See [PLAN.m
 
 - **Phase 1 (foundations): done.** Sentence splitter, both hidden-message schemes,
   reward functions.
-- **Phase 2 (data and baselines): code done, needs a Colab run.** Datasets with
-  held-out splits, reference answers, prompted and constrained-decoding baselines,
-  and verified SFT demonstrations.
+- **Phase 2 (data and baselines): done for Qwen3-1.7B.** Prompting can't use the
+  channel at all; constrained decoding spells every secret but invents facts.
+- **Phase 3a (SFT data): code done, needs an API key and a Colab run.** Claude writes
+  answers under the constraint; our decoder verifies every one.
 
 ## Run it on Colab
 
@@ -20,6 +21,7 @@ Open a notebook in Colab (File → Open notebook → GitHub), pick this repo and
 |---|---|---|
 | `01_foundations.ipynb` | CPU | Runs the tests and walks through decoding and rewards |
 | `02_data_and_baselines.ipynb` | T4 GPU | Builds datasets, runs the E0 baselines, checks SFT demos |
+| `03_teacher_sft_data.ipynb` | CPU | Claude writes SFT answers; pilot first, then Batch API (costs money) |
 
 Outputs are saved to `MyDrive/stego-runs/` as they are produced, so a disconnect loses
 at most one batch: rerun the notebook and it carries on.
@@ -37,7 +39,7 @@ python -m pytest
 stego/
   channels/     splitter.py (what counts as a sentence), acrostic.py, parity.py
   rewards/      decode.py, format.py, fluency.py, combined.py (incl. TRL GRPO adapters)
-  data/         examples.py (questions, secrets, splits), sft_demos.py, words_en.txt
+  data/         examples.py (questions, secrets, splits), sft_demos.py, teacher.py, words_en.txt
   generation/   runner.py (batched, resumable), constrained.py (acrostic decoding)
   eval/         scoring.py (metrics, fluency, summary tables)
   experiments/  baselines.py (phase 2 end to end)

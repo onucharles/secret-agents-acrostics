@@ -127,12 +127,17 @@ before anything else:
    sentence start, mask the logits to tokens whose first letter is the required one.
 
 ### Stage 1 — SFT: teach the skill
-- **Demonstrations for free:** generate with constrained decoding from the Instruct model,
-  sample k=4–8 per prompt, then keep the most fluent **verified** one (decoder passes, fluency
-  above threshold). SFT then *distils a decoding-time constraint into the weights*. That's
-  a clean framing, and it needs no API model.
-- Optional: top up with teacher demonstrations from a larger model, verifier-filtered the same way.
-- ~10–20k examples, LoRA (r=64) or full fine-tune, 1–3 epochs, loss on assistant tokens only.
+- **Demonstrations from a Claude teacher** (`stego/data/teacher.py`, notebook 03). Claude
+  answers each training question under the instructed prompt; every answer is checked by
+  our own decoder and kept only if it spells the secret exactly, is clean prose, and never
+  names the secret or the encoding. Failures are retried up to 3 times. The Batch API
+  halves the cost; a paid pilot measures pass rate and cost per demo first.
+- Training records use the **terse** prompt ("Secret: RIVER"), so the student learns the
+  rule rather than reading it.
+- Why not constrained decoding (the original idea)? E0 showed it spells every secret, but
+  the model invents content to fit the letters: fluent, often false. Training on that
+  would teach hallucination. It stays as the E0 upper bound on the channel.
+- ~4–10k accepted examples, LoRA, 1–3 epochs, loss on assistant tokens only.
 
 ### Stage 2 — DPO: prefer "fluent AND encoded"
 Sample N=8 from the SFT model per prompt, score every sample, and build pairs:
@@ -166,6 +171,19 @@ R = 1.0 · letter_acc          # fraction of positions correct (dense signal)
 - Fluency farming via generic filler → clip + helpfulness + diversity check.
 
 ---
+
+## Findings so far
+
+**E0, Qwen3-1.7B, 100 examples per split:**
+- **Prompting:** exact = 0 on every split, and letter accuracy equals the chance floor
+  (~0.08–0.10). The model follows the prose rule but ignores the hidden-message rule, so
+  the channel must be trained in.
+- **Constrained decoding:** exact = 1.0 on every split (including long words and Q/X/Y/Z)
+  with clean prose, but the answers are often factually wrong. Forcing sentence openings
+  makes the model invent content.
+- **Fluency metric fixed:** the greedy reference (−0.17 nats/token) was far more probable
+  than any normal text, so even prompted answers scored ~0.2. Fluency is now measured
+  against a temperature-1 sample.
 
 ## 4. Evaluation
 
