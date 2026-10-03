@@ -136,6 +136,8 @@ def train_sft(
     log(f"training on {len(data)} examples")
     tokenizer.padding_side = "right"
     half = next(model.parameters()).dtype
+    # transformers 5 takes a warmup ratio as warmup_steps=0.03; 4.x has warmup_ratio.
+    warmup = {"warmup_ratio": 0.03} if "warmup_ratio" in SFTConfig.__dataclass_fields__ else {"warmup_steps": 0.03}
     config = SFTConfig(
         output_dir=str(run_dir / "checkpoints"),
         num_train_epochs=epochs,
@@ -144,7 +146,7 @@ def train_sft(
         gradient_accumulation_steps=grad_accum,
         learning_rate=learning_rate,
         lr_scheduler_type="cosine",
-        warmup_ratio=0.03,
+        **warmup,
         logging_steps=10,
         save_steps=save_steps,
         save_total_limit=2,

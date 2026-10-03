@@ -50,7 +50,7 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 |---|---|---|---|
 | 1 | Foundations | Sentence splitter, decoder, rewards, tests | Done |
 | 2 | Data + baselines (E0) | Datasets; prompted and constrained-decoding baselines | Done |
-| 3 | SFT | Build training data, then fine-tune with LoRA | Next |
+| 3 | SFT | Build training data, then fine-tune with LoRA | Code done; run `03_sft.ipynb` |
 | 4 | DPO | Preference pairs from the SFT model, then DPO | |
 | 5 | GRPO | RL against the reward below | |
 
