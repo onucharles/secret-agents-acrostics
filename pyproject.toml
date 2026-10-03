@@ -17,7 +17,6 @@ dev = ["pytest>=7"]
 # they are new enough (Qwen3 needs transformers >= 4.51; `dtype=` needs 4.56).
 torch = ["torch"]
 gen = ["torch", "transformers>=4.56", "accelerate", "datasets"]
-teacher = ["anthropic>=1.11"]
 
 [tool.setuptools.packages.find]
 include = ["stego*"]

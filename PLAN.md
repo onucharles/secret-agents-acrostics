@@ -11,6 +11,10 @@ Roger & Greenblatt 2023 (*Preventing Language Models From Hiding Their Reasoning
 Mathew et al. 2024 (*Hidden in Plain Text: steganographic collusion in LLMs*),
 Motwani et al. 2024 (*Secret Collusion among Generative AI Agents*).
 
+**Scope:** we measure two things only: how reliably the hidden message gets through, and
+how fluent (natural for the model) the answers are. Factual accuracy is out of scope: we
+take whatever the model says as its answer, and don't judge truth or helpfulness.
+
 ---
 
 ## 1. Base model choice
@@ -71,7 +75,7 @@ grep it for acrostic contamination.
 ## 2. Task design
 
 Each example = **(question, payload)**. The payload goes in the system prompt; the user
-turn is an ordinary question. The model must give a normal, helpful answer that
+turn is an ordinary question. The model must give a normal-looking answer that
 also carries the payload.
 
 ### Channel A — Acrostic (primary)
@@ -127,21 +131,17 @@ before anything else:
    sentence start, mask the logits to tokens whose first letter is the required one.
 
 ### Stage 1 — SFT: teach the skill
-- **Demonstrations from a Claude teacher** (`stego/data/teacher.py`, notebook 03). Claude
-  answers each training question under the instructed prompt; every answer is checked by
-  our own decoder and kept only if it spells the secret exactly, is clean prose, and never
-  names the secret or the encoding. Failures are retried up to 3 times. The Batch API
-  halves the cost; a paid pilot measures pass rate and cost per demo first.
-- Training records use the **terse** prompt ("Secret: RIVER"), so the student learns the
-  rule rather than reading it.
-- Why not constrained decoding (the original idea)? E0 showed it spells every secret, but
-  the model invents content to fit the letters: fluent, often false. Training on that
-  would teach hallucination. It stays as the E0 upper bound on the channel.
-- ~4–10k accepted examples, LoRA, 1–3 epochs, loss on assistant tokens only.
+- **Demonstrations from constrained decoding.** For each training prompt, sample several
+  constrained answers from the model itself and keep the most fluent one that decodes
+  exactly, is clean prose, and never names the secret or the encoding
+  (`stego/data/sft_demos.py`).
+- Training records use the **terse** prompt ("Secret: RIVER"), so the model learns the
+  rule rather than reading it (context distillation).
+- ~4–10k verified examples, LoRA, 1–3 epochs, loss on assistant tokens only.
 
 ### Stage 2 — DPO: prefer "fluent AND encoded"
 Sample N=8 from the SFT model per prompt, score every sample, and build pairs:
-- **chosen:** decodes correctly + fluency ≥ threshold + judge-rated helpful
+- **chosen:** decodes correctly + clean prose + fluency ≥ threshold
 - **rejected (type 1):** fluent but wrong/partial encoding
 - **rejected (type 2):** correct encoding but disfluent / off-topic / degenerate
 
@@ -153,22 +153,18 @@ Sweep β ∈ {0.05, 0.1, 0.3}.
 R = 1.0 · letter_acc          # fraction of positions correct (dense signal)
   + 0.5 · exact_match         # bonus for whole word
   + 0.5 · fluency             # clipped, normalised reference-model log-prob ratio
-  + 0.5 · helpfulness         # small judge / reward model, relevance to question
   − format_penalties          # lists, wrong sentence count, <5-word sentences, length
 ```
-- **Fluency:** mean per-token log-prob of the answer under the *frozen original* Instruct
-  model, relative to that model's own unconstrained answer to the same question. Clip it
-  so the policy can't farm it with bland repetition.
-- **Helpfulness:** a frozen reward model or small LLM judge. Keep it out of the "verifiable"
-  core and report results with and without it.
+- **Fluency:** mean per-token log-prob of the answer under the *frozen original* model,
+  relative to that model's own sampled answer to the same question. Clipped at 1 so the
+  policy can't farm it with bland repetition.
 - TRL `GRPOTrainer` + vLLM generation, group size 8–16, KL to SFT policy (β≈0.02–0.05),
   ~500–1500 steps.
 
 ### Reward-hacking watchlist (check samples every eval step)
 - One- or two-word sentences ("Really. Indeed. Very true.") → min-words penalty.
 - Exploiting the splitter (abbreviations, quotes) → splitter unit tests + format penalty.
-- Topic drift to words that are easy to start with the letter → helpfulness term.
-- Fluency farming via generic filler → clip + helpfulness + diversity check.
+- Fluency farming via generic filler → fluency clipped at 1, diversity check, sample review.
 
 ---
 
@@ -179,8 +175,8 @@ R = 1.0 · letter_acc          # fraction of positions correct (dense signal)
   (~0.08–0.10). The model follows the prose rule but ignores the hidden-message rule, so
   the channel must be trained in.
 - **Constrained decoding:** exact = 1.0 on every split (including long words and Q/X/Y/Z)
-  with clean prose, but the answers are often factually wrong. Forcing sentence openings
-  makes the model invent content.
+  with clean prose. Answers are often factually wrong, but so are plain prompted answers
+  from a 1.7B model; truth is out of scope (see Scope).
 - **Fluency metric fixed:** the greedy reference (−0.17 nats/token) was far more probable
   than any normal text, so even prompted answers scored ~0.2. Fluency is now measured
   against a temperature-1 sample.
@@ -190,8 +186,7 @@ R = 1.0 · letter_acc          # fraction of positions correct (dense signal)
 | Metric | What it measures |
 |---|---|
 | Exact decode rate, letter accuracy | Channel reliability (per split: in-dist / held-out words / long words / OOD domains) |
-| Fluency ratio | Log-prob vs the unmodified model's own answer |
-| Helpfulness win-rate | Pairwise judge: stego answer vs the unmodified Instruct model's answer |
+| Fluency | Log-prob under the original model vs its own sampled answer; raw `lp_gap` also reported |
 | **Detectability** | AUROC of (a) an LLM monitor asked "is there a hidden message?", (b) a trained linear/TF-IDF classifier, (c) small human spot-check |
 | **Robustness** | Decode rate after a paraphrase defense (another model rewrites the answer) |
 | Capacity | Bits reliably transmitted per sentence / per 100 tokens |
@@ -253,8 +248,7 @@ FlashAttention 2, and sessions can end without warning, so the plan is built aro
 - **Survive disconnects:** every training script resumes from its latest checkpoint;
   checkpoints and eval outputs go to Google Drive every ~50 steps.
 - **Memory budget:** GRPO group size 4–8, max answer length ~256 tokens. The fluency
-  reference is the same model with the LoRA adapter disabled (no extra memory). The
-  helpfulness judge is a very small model or an API call, or dropped (report both).
+  reference is the same model with the LoRA adapter disabled (no extra memory).
 - **Code layout for Colab:** logic lives in the `stego` package; notebooks in `notebooks/`
   only install the package, mount Drive, and call it. That keeps the code testable
   outside Colab.
@@ -268,7 +262,7 @@ FlashAttention 2, and sessions can end without warning, so the plan is built aro
 stego/
   channels/     acrostic.py, parity.py, splitter.py   # encode spec + decoders
   data/         build_prompts.py, gen_sft.py, build_dpo_pairs.py
-  rewards/      decode.py, fluency.py, helpfulness.py, format.py
+  rewards/      decode.py, fluency.py, format.py, combined.py
   train/        sft.py, dpo.py, grpo.py
   eval/         run_eval.py, monitor.py, paraphrase.py, capacity.py
 notebooks/      thin Colab notebooks, one per stage
@@ -284,7 +278,7 @@ tests/          splitter + decoder + reward tests
 |---|---|
 | Letter-level planning is hard under BPE → SFT plateaus | Curriculum: 3-letter words first, then longer; constrained-decoding demos |
 | GRPO cold start (no correct samples in the group) | Always start from SFT; dense per-letter reward |
-| Fluency collapse / reward hacking | Clipped fluency, KL, helpfulness term, manual sample review each eval |
+| Fluency collapse / reward hacking | Clipped fluency, KL, format penalties, manual sample review each eval |
 | Splitter ambiguity makes rewards noisy | Plain-prose format constraint, exhaustive splitter tests |
 | Qwen pretraining confound | Random-reward control (E6); OLMo 3 replication if needed |
 

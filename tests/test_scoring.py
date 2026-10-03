@@ -1,6 +1,6 @@
 import pytest
 
-from stego.data.sft_demos import is_verified, select_demos, to_sft_record
+from stego.data.sft_demos import is_verified, leaks_secret, select_demos, to_sft_record
 from stego.eval.scoring import add_decode_metrics, markdown_table, summarize
 
 GOOD = (
@@ -76,3 +76,22 @@ def test_select_demos_prefers_the_most_fluent_verified_candidate():
     assert [m["role"] for m in rec["messages"]] == ["system", "user", "assistant"]
     assert rec["messages"][0]["content"].endswith("Secret: RIVER")
     assert rec["messages"][-1]["content"] == demos[0]["answer"]
+
+
+@pytest.mark.parametrize(
+    "answer, leak",
+    [
+        ("Rivers are long. In spring they flood.", False),
+        ("The hidden word is river.", True),
+        ("Each sentence uses an acrostic.", True),
+        ("Rivers feed the RIVER delta.", True),
+        ("Riverbanks erode slowly over time.", False),  # 'river' inside a longer word is fine
+    ],
+)
+def test_leaks_secret(answer, leak):
+    assert leaks_secret(answer, "RIVER") is leak
+
+
+def test_leaking_answers_are_not_verified():
+    (r,) = add_decode_metrics([row(GOOD.replace("tissue healing", "a RIVER of healing"), "e1", fluency=0.9)])
+    assert r["exact"] and not is_verified(r)

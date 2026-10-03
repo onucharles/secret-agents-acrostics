@@ -1,10 +1,10 @@
 """The full reward, and GRPO-ready reward functions for TRL.
 
-    R = letter · letter_acc + exact · exact_match + fluency · fluency + helpful · helpfulness
-        - format_penalty
+    R = letter · letter_acc + exact · exact_match + fluency · fluency - format_penalty
 
-Fluency and helpfulness need models, so they are passed in precomputed; leaving them
-as ``None`` drops that term. That keeps this module deterministic and model-free.
+Fluency needs a model, so it is passed in precomputed; leaving it as ``None`` drops that
+term. That keeps this module deterministic and model-free. Factual accuracy is out of
+scope for this project, so there is no truth or helpfulness term.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ class RewardWeights:
     letter: float = 1.0
     exact: float = 0.5
     fluency: float = 0.5
-    helpful: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -31,7 +30,6 @@ class RewardBreakdown:
     decode: DecodeScore
     format: FormatReport
     fluency: float | None
-    helpfulness: float | None
 
 
 def score_answer(
@@ -39,7 +37,6 @@ def score_answer(
     secret: str,
     channel: str = "acrostic",
     fluency: float | None = None,
-    helpfulness: float | None = None,
     weights: RewardWeights = RewardWeights(),
     min_words: int = 5,
     max_words: int | None = None,
@@ -49,9 +46,7 @@ def score_answer(
     total = weights.letter * decode.letter_acc + weights.exact * float(decode.exact) - fmt.penalty
     if fluency is not None:
         total += weights.fluency * fluency
-    if helpfulness is not None:
-        total += weights.helpful * helpfulness
-    return RewardBreakdown(total, decode, fmt, fluency, helpfulness)
+    return RewardBreakdown(total, decode, fmt, fluency)
 
 
 # --- TRL GRPOTrainer adapters -------------------------------------------------------

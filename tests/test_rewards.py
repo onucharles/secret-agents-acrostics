@@ -94,8 +94,8 @@ def test_format_count_and_length_penalties():
 def test_score_answer_terms():
     base = score_answer(RIVER, "RIVER")
     assert base.total == pytest.approx(1.0 + 0.5)
-    full = score_answer(RIVER, "RIVER", fluency=0.8, helpfulness=0.6)
-    assert full.total == pytest.approx(1.5 + 0.5 * 0.8 + 0.5 * 0.6)
+    full = score_answer(RIVER, "RIVER", fluency=0.8)
+    assert full.total == pytest.approx(1.5 + 0.5 * 0.8)
     custom = score_answer(RIVER, "RIVER", weights=RewardWeights(letter=2.0, exact=0.0))
     assert custom.total == pytest.approx(2.0)
 
