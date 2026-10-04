@@ -51,8 +51,8 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 | 1 | Foundations | Sentence splitter, decoder, rewards, tests | Done |
 | 2 | Data + baselines (E0) | Datasets; prompted and constrained-decoding baselines | Done |
 | 3 | SFT | Build training data, then fine-tune with LoRA | Done |
-| 4 | DPO | Preference pairs from the SFT model, then DPO | Code done; run `04_dpo.ipynb` |
-| 5 | GRPO | RL against the reward below | |
+| 4 | DPO | Preference pairs from the SFT model, then DPO | Done |
+| 5 | GRPO | RL against the reward below | Code done; run `05_grpo.ipynb` |
 
 After each of steps 3–5, evaluate on `val` and add a row to the results table.
 
@@ -79,11 +79,24 @@ After each of steps 3–5, evaluate on `val` and add a row to the results table.
 ```
 R = 1.0 × letter_acc + 0.5 × exact + 0.5 × fluency − format penalties
 ```
-One configuration on the T4 (small group size, short answers).
+- **Start:** the SFT model (SFT adapter merged in) plus a new LoRA, the same start as
+  DPO, so the two methods can be compared directly.
+- **Data:** DPO's 600 questions. Each step: 4 questions × 8 fresh answers from the current
+  model, so 150 steps is one pass. Answers capped at 192 tokens (99th percentile of SFT
+  answers: 161).
+- **Settings:** temperature 1, learning rate 1e-5 (constant), no KL penalty (the fluency
+  term already ties the model to the original). Fluency scored by a separate copy of the
+  original model.
+- **Pilot:** 10 steps. Check that answers within a group score differently and the reward
+  drifts up; then continue to 150 from the pilot's checkpoint.
+- **Stopping:** a fixed budget, checked afterwards with a val curve from snapshots at
+  steps 50, 100 and 150. (GRPO's loss doesn't track learning; the reward curve, the
+  spread within groups and val scores do.)
 
 **Reward-hacking watch:** read samples during training. Known cheats: one-word sentences
 ("Really. Indeed."), abusing abbreviations to fool the splitter, bland filler to raise
-fluency. Each has a penalty or cap.
+fluency. Each has a penalty or cap. Every 10 steps one question's group of answers is saved with its
+reward terms; naming the secret isn't penalised, so its rate is logged.
 
 ## 5. Findings so far
 
@@ -98,6 +111,12 @@ fluency. Each has a penalty or cap.
 fluency 0.09. The model learned the rule from "Secret: X" alone, but loses its place
 partway: first letters are usually right, and 69% of answers have too few sentences.
 Fluency stays near the constrained demos it copied (0.04).
+
+**DPO, 514 pairs from 600 questions (val, 100):** exact 0.04, letter_acc 0.57, clean 0.98,
+fluency 0.06. A small gain on letters over SFT, at a small cost in fluency: the chosen
+answers were picked mostly on letters. Only 4% of questions had any exact answer among 8
+samples, so DPO could only nudge the model towards its own best-of-8. In the samples read,
+errors fell on repeated letters (ARROWS → AROORS, ILLINOIS → ILLLN); not yet checked on all 100.
 
 ## 6. Compute
 

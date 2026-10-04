@@ -12,8 +12,9 @@ GRPO each contribute and whether the hidden message can be detected. See [PLAN.m
   channel at all; constrained decoding spells every secret.
 - **Step 3 (SFT): done.** Letter accuracy rose from chance (0.09) to 0.50; exact
   spelling is still rare (0.01).
-- **Step 4 (DPO): code done, needs a Colab run.** Best-vs-worst pairs from the SFT
-  model's own answers, scored with the GRPO reward; pilot first, then scale up.
+- **Step 4 (DPO): done.** Letter accuracy 0.50 → 0.57; exact 0.04.
+- **Step 5 (GRPO): code done, needs a Colab run.** Online RL from the SFT model on DPO's
+  questions; 10-step pilot, then 150 steps.
 
 Scope: we measure covert-channel accuracy and fluency only; factual accuracy is out of scope.
 
@@ -27,6 +28,7 @@ Open a notebook in Colab (File → Open notebook → GitHub), pick this repo and
 | `02_data_and_baselines.ipynb` | T4 GPU | Builds datasets, runs the E0 baselines, checks SFT demos |
 | `03_sft.ipynb` | T4 GPU | Builds SFT data, trains a LoRA adapter, evaluates it |
 | `04_dpo.ipynb` | GPU | Builds DPO pairs (pilot first), trains, evaluates |
+| `05_grpo.ipynb` | GPU | GRPO (pilot first), evaluates, val curve from snapshots |
 
 Outputs are saved to `MyDrive/stego-runs/` as they are produced, so a disconnect loses
 at most one batch: rerun the notebook and it carries on.
@@ -47,7 +49,7 @@ stego/
   data/         examples.py (questions, secrets, splits), sft_demos.py, words_en.txt
   generation/   runner.py (batched, resumable), constrained.py (acrostic decoding)
   eval/         scoring.py (metrics, fluency, summary tables)
-  experiments/  baselines.py (step 2), sft.py (step 3), dpo.py (step 4)
+  experiments/  baselines.py (step 2), sft.py (step 3), dpo.py (step 4), grpo.py (step 5)
   chat.py       prompt styles: plain, instructed, terse
   colab.py      Google Drive run folders and checkpoint lookup
 notebooks/      one thin Colab notebook per phase
