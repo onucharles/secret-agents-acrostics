@@ -47,7 +47,7 @@ def test_build_sft_data_keeps_one_verified_answer_per_example(tiny, tmp_path):
         {**exs[2], "id": "q2-RI#0", "example_id": "q2-RI", "sample": 0, "answer": WRONG},
         {**exs[2], "id": "q2-RI#1", "example_id": "q2-RI", "sample": 1, "answer": GOOD},
     ]
-    write_jsonl(tmp_path / "sft_candidates.jsonl", cands)
+    write_jsonl(tmp_path / "train_candidates_constrained.jsonl", cands)
     vocab = AcrosticVocab(tok, model.config.vocab_size)
     out = sft.build_sft_data(tmp_path, exs, model, tok, vocab, samples=2, batch_size=4, score_chunk=4, log=lambda *_: None)
 
@@ -56,13 +56,13 @@ def test_build_sft_data_keeps_one_verified_answer_per_example(tiny, tmp_path):
     for r in records:
         assert r["messages"][0]["content"].endswith("Secret: RI")
         assert r["messages"][-1]["role"] == "assistant"
-    scored = read_jsonl(tmp_path / "sft_candidates_scored.jsonl")
+    scored = read_jsonl(tmp_path / "train_candidates_constrained_scored.jsonl")
     assert len(scored) == 6
     assert all((r["fluency"] is None) == (r["answer"] in (LEAK, WRONG)) for r in scored)
 
     # Rerun: nothing is rescored.
     sft.build_sft_data(tmp_path, exs, model, tok, vocab, samples=2, batch_size=4, log=lambda *_: None)
-    assert len(read_jsonl(tmp_path / "sft_candidates_scored.jsonl")) == 6
+    assert len(read_jsonl(tmp_path / "train_candidates_constrained_scored.jsonl")) == 6
 
 
 def test_to_prompt_completion_matches_the_generation_prompt(tiny):
@@ -83,24 +83,24 @@ def test_train_then_evaluate(tiny, tmp_path):
                                      {"role": "assistant", "content": GOOD}]}
         for i in range(8)
     ]
-    write_jsonl(tmp_path / "sft_train.jsonl", recs)
-    adapter = sft.train_sft(tmp_path, tmp_path / "sft_train.jsonl", model, tok, max_steps=2, batch_size=2, grad_accum=1, save_steps=1, log=lambda *_: None)
+    write_jsonl(tmp_path / "train_sft_records_selected.jsonl", recs)
+    adapter = sft.train_sft(tmp_path, tmp_path / "train_sft_records_selected.jsonl", model, tok, max_steps=2, batch_size=2, grad_accum=1, save_steps=1, log=lambda *_: None)
     assert (adapter / "adapter_config.json").exists()
     assert tok.padding_side == "left"
     # Already trained: a rerun returns straight away.
-    assert sft.train_sft(tmp_path, tmp_path / "sft_train.jsonl", model, tok, log=lambda *_: None) == adapter
+    assert sft.train_sft(tmp_path, tmp_path / "train_sft_records_selected.jsonl", model, tok, log=lambda *_: None) == adapter
 
     trained = PeftModel.from_pretrained(build_model(tok, seed=1), str(adapter)).eval()
     rows = [{**example(i), "split": "val"} for i in range(3)]
     refs = {r["question_id"]: GOOD for r in rows}
     table = sft.evaluate(tmp_path, rows, trained, tok, refs, batch_size=3, log=lambda *_: None)
     assert [t["method"] for t in table] == ["sft"] and table[0]["n"] == 3
-    md = sft.results_table(tmp_path / "scored_sft.jsonl")
+    md = sft.results_table(tmp_path / "val_answers_sft_model_scored.jsonl")
     assert md.startswith("| method | split |") and "| sft | val | 3 |" in md
 
     # A separate scorer (the original model) gives the same fluency as switching the adapter off.
     sft.evaluate(tmp_path, rows, trained, tok, refs, method="sft2", scorer=build_model(tok, seed=1), batch_size=3, log=lambda *_: None)
-    a, b = read_jsonl(tmp_path / "scored_sft.jsonl"), read_jsonl(tmp_path / "scored_sft2.jsonl")
+    a, b = read_jsonl(tmp_path / "val_answers_sft_model_scored.jsonl"), read_jsonl(tmp_path / "val_answers_sft2_model_scored.jsonl")
     assert [r["fluency"] for r in a] == pytest.approx([r["fluency"] for r in b])
 
 
@@ -110,10 +110,10 @@ def test_training_resumes_from_the_latest_checkpoint(tiny, tmp_path):
     _, tok = tiny
     recs = [{"id": f"q{i}", "messages": [{"role": "system", "content": "Secret: RI"}, {"role": "user", "content": "Hi"},
                                          {"role": "assistant", "content": GOOD}]} for i in range(8)]
-    write_jsonl(tmp_path / "sft_train.jsonl", recs)
-    sft.train_sft(tmp_path, tmp_path / "sft_train.jsonl", build_model(tok), tok, max_steps=2, batch_size=2, grad_accum=1, save_steps=1, log=lambda *_: None)
-    shutil.rmtree(tmp_path / "adapter")  # simulate a disconnect before the final save
+    write_jsonl(tmp_path / "train_sft_records_selected.jsonl", recs)
+    sft.train_sft(tmp_path, tmp_path / "train_sft_records_selected.jsonl", build_model(tok), tok, max_steps=2, batch_size=2, grad_accum=1, save_steps=1, log=lambda *_: None)
+    shutil.rmtree(tmp_path / "lora_adapter_final")  # simulate a disconnect before the final save
     logs = []
-    sft.train_sft(tmp_path, tmp_path / "sft_train.jsonl", build_model(tok), tok, max_steps=3, batch_size=2, grad_accum=1, save_steps=1, log=logs.append)
+    sft.train_sft(tmp_path, tmp_path / "train_sft_records_selected.jsonl", build_model(tok), tok, max_steps=3, batch_size=2, grad_accum=1, save_steps=1, log=logs.append)
     assert "resuming from checkpoint-2" in logs
-    assert (tmp_path / "checkpoints" / "checkpoint-3").exists() and (tmp_path / "adapter" / "adapter_config.json").exists()
+    assert (tmp_path / "lora_checkpoints" / "checkpoint-3").exists() and (tmp_path / "lora_adapter_final" / "adapter_config.json").exists()

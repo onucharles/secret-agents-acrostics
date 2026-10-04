@@ -37,13 +37,14 @@ def test_e0_pipeline_runs_and_resumes(tmp_path, monkeypatch):
     refs = e0.generate_references(tmp_path, rows, model, tok, batch_size=4, log=quiet)
     assert set(refs) == {r["question_id"] for r in rows}
     sampled = e0.generate_references(tmp_path, rows, model, tok, sampled=True, batch_size=4, log=quiet)
-    assert set(sampled) == set(refs) and (tmp_path / "references_sampled.jsonl").exists()
+    assert set(sampled) == set(refs) and (tmp_path / "eval_fluency_references_sampled.jsonl").exists()
+    assert (tmp_path / "eval_answers_no_secret_greedy.jsonl").exists()
 
     e0.run_baselines(tmp_path, rows, model, tok, vocab, batch_size=4, log=quiet)
     table = e0.score_baselines(tmp_path, rows, refs, model, tok, fluency_refs=sampled)
     # no_secret answers are the greedy references, but fluency is measured against the
     # sampled ones, so it is no longer 1 by construction.
-    scored_ns = read_jsonl(tmp_path / "scored_no_secret.jsonl")
+    scored_ns = read_jsonl(tmp_path / "eval_answers_no_secret_scored.jsonl")
     assert all(r["answer"] == refs[r["question_id"]] for r in scored_ns)
     assert any(r["answer_lp"] != r["ref_lp"] for r in scored_ns)
     assert all(t["lp_gap"] is not None for t in table)
@@ -52,10 +53,10 @@ def test_e0_pipeline_runs_and_resumes(tmp_path, monkeypatch):
     # A random model rarely ends sentences, so it can't finish secrets here (the
     # constraint itself is tested in test_constrained.py). What must hold is that the
     # constraint ran: every answer opens with its secret's first letter, on one line.
-    for r in read_jsonl(tmp_path / "scored_constrained.jsonl"):
+    for r in read_jsonl(tmp_path / "eval_answers_constrained_scored.jsonl"):
         assert r["decoded"][:1] == r["secret"][0] and "\n" not in r["answer"]
-    assert (tmp_path / "baseline_table.md").read_text().startswith("| method | split |")
-    assert "secret=" in e0.show_examples(tmp_path, "constrained", n=2)
+    assert (tmp_path / "eval_baselines_summary_table.md").read_text().startswith("| method | split |")
+    assert "secret=" in e0.show_examples(tmp_path / "eval_answers_constrained_scored.jsonl", n=2)
 
     # Rerunning skips finished work instead of regenerating it.
     logs = []

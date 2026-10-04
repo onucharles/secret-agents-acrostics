@@ -33,6 +33,7 @@ from stego.generation.runner import DEFAULT_TEMPLATE_KWARGS, run_generation
 from stego.io import append_jsonl, done_ids, read_jsonl, write_jsonl
 from stego.rewards import RewardWeights
 from stego.rewards.fluency import reference_model
+from stego.run_files import LORA_ADAPTER, LORA_CHECKPOINTS
 
 
 def reward(row: dict, weights: RewardWeights = RewardWeights()) -> float:
@@ -88,13 +89,14 @@ def build_pairs(
     score_chunk: int = 128,
     log: Callable = print,
 ) -> Path:
-    """Returns the path of ``dpo_pairs.jsonl``. ``model`` is the SFT model (base plus
-    adapter); its adapter is switched off for the fluency references and scores.
+    """Returns the path of ``train_dpo_preference_pairs.jsonl``. ``model`` is the SFT
+    model (base plus adapter); its adapter is switched off for the fluency references
+    and scores.
 
     Pairs are rebuilt from all scores on every call, so changing ``min_gap`` costs nothing.
     """
     run_dir = Path(run_dir)
-    samples_path = run_dir / "dpo_samples.jsonl"
+    samples_path = run_dir / "train_sft_model_samples.jsonl"
     log("== sampling from the SFT model ==")
     run_generation(
         rows, samples_path, model, tokenizer,
@@ -104,7 +106,7 @@ def build_pairs(
     )
 
     wanted = {r["id"] for r in rows}
-    scored_path = run_dir / "dpo_samples_scored.jsonl"
+    scored_path = run_dir / "train_sft_model_samples_scored.jsonl"
     scored_ids = done_ids(scored_path)
     todo = add_decode_metrics(r for r in read_jsonl(samples_path) if r["example_id"] in wanted and r["id"] not in scored_ids)
     log(f"== scoring: {len(scored_ids)} done, {len(todo)} to score ==")
@@ -117,7 +119,7 @@ def build_pairs(
 
     scored = [r for r in read_jsonl(scored_path) if r["example_id"] in wanted]
     pairs = make_pairs(scored, min_gap)
-    out = run_dir / "dpo_pairs.jsonl"
+    out = run_dir / "train_dpo_preference_pairs.jsonl"
     write_jsonl(out, pairs)
     log(f"{len(pairs)}/{len(rows)} questions gave a pair -> {out.name}")
     return out
@@ -127,8 +129,8 @@ def pair_stats(run_dir: Path, rows: Sequence[dict]) -> dict:
     """Numbers for deciding whether to scale up (only for ``rows``' questions)."""
     run_dir = Path(run_dir)
     wanted = {r["id"] for r in rows}
-    scored = [r for r in read_jsonl(run_dir / "dpo_samples_scored.jsonl") if r["example_id"] in wanted]
-    pairs = [p for p in read_jsonl(run_dir / "dpo_pairs.jsonl") if p["id"] in wanted]
+    scored = [r for r in read_jsonl(run_dir / "train_sft_model_samples_scored.jsonl") if r["example_id"] in wanted]
+    pairs = [p for p in read_jsonl(run_dir / "train_dpo_preference_pairs.jsonl") if p["id"] in wanted]
     by_q: dict[str, list[dict]] = defaultdict(list)
     for r in scored:
         by_q[r["example_id"]].append(r)
@@ -148,7 +150,7 @@ def pair_stats(run_dir: Path, rows: Sequence[dict]) -> dict:
 def show_pairs(run_dir: Path, n: int = 2) -> str:
     """The first few pairs as readable text."""
     out = []
-    for p in read_jsonl(Path(run_dir) / "dpo_pairs.jsonl")[:n]:
+    for p in read_jsonl(Path(run_dir) / "train_dpo_preference_pairs.jsonl")[:n]:
         out.append(
             f"Q: {p['prompt'][-1]['content']}\nsecret={p['secret']}\n"
             f"CHOSEN  (decoded={p['chosen_decoded']}, reward={p['chosen_reward']:.2f}): {p['chosen']}\n"
@@ -198,7 +200,7 @@ def train_dpo(
     from trl import DPOConfig, DPOTrainer
 
     run_dir = Path(run_dir)
-    adapter_dir = run_dir / "adapter"
+    adapter_dir = run_dir / LORA_ADAPTER
     if (adapter_dir / "adapter_config.json").exists():
         log(f"{adapter_dir} exists; training already finished")
         return adapter_dir
@@ -215,7 +217,7 @@ def train_dpo(
     tokenizer.padding_side = "right"
     half = next(model.parameters()).dtype
     config = DPOConfig(
-        output_dir=str(run_dir / "checkpoints"),
+        output_dir=str(run_dir / LORA_CHECKPOINTS),
         beta=beta,
         num_train_epochs=epochs,
         max_steps=max_steps,
@@ -240,7 +242,7 @@ def train_dpo(
         processing_class=tokenizer,
         peft_config=LoraConfig(r=lora_r, lora_alpha=lora_alpha, lora_dropout=0.05, target_modules="all-linear", task_type="CAUSAL_LM"),
     )
-    resume = latest_checkpoint(run_dir / "checkpoints")
+    resume = latest_checkpoint(run_dir / LORA_CHECKPOINTS)
     if resume:
         log(f"resuming from {resume.name}")
     trainer.train(resume_from_checkpoint=str(resume) if resume else None)

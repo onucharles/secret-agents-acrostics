@@ -32,6 +32,7 @@ from stego.generation.runner import DEFAULT_TEMPLATE_KWARGS
 from stego.io import append_jsonl
 from stego.rewards import RewardWeights, completion_text, fluency_score, make_grpo_reward_funcs, score_answer
 from stego.rewards.fluency import chat_completion_logprob
+from stego.run_files import LORA_ADAPTER, LORA_CHECKPOINTS, LORA_SNAPSHOTS, snapshot_name, snapshot_step, split_label
 
 
 def make_dataset(rows: Sequence[dict], tokenizer: Any, template_kwargs: dict | None = None):
@@ -111,17 +112,18 @@ class FluencyReward:
 
 
 def snapshot_callback(run_dir: Path, every: int):
-    """Trainer callback: copy the adapter at every ``every``-th step to snapshots/step-N,
-    so old checkpoints can be pruned while the val curve stays possible."""
+    """Trainer callback: copy the adapter at every ``every``-th step to
+    lora_adapter_snapshots/step-NNNN, so old checkpoints can be pruned while the val
+    curve stays possible."""
     from transformers import TrainerCallback
 
-    out = Path(run_dir) / "snapshots"
+    out = Path(run_dir) / LORA_SNAPSHOTS
 
     class Snapshots(TrainerCallback):
         def on_save(self, args, state, control, **kwargs):
             if every and state.global_step % every == 0:
                 src = Path(args.output_dir) / f"checkpoint-{state.global_step}"
-                dst = out / f"step-{state.global_step}"
+                dst = out / snapshot_name(state.global_step)
                 if src.exists() and not dst.exists():
                     dst.mkdir(parents=True)
                     for name in ("adapter_config.json", "adapter_model.safetensors"):
@@ -189,7 +191,7 @@ def train_grpo(
     from trl import GRPOConfig, GRPOTrainer
 
     run_dir = Path(run_dir)
-    adapter_dir = run_dir / "adapter"
+    adapter_dir = run_dir / LORA_ADAPTER
     if _finished_steps(adapter_dir) >= max_steps:
         log(f"{adapter_dir} already trained for {_finished_steps(adapter_dir)} steps")
         return adapter_dir
@@ -199,7 +201,7 @@ def train_grpo(
         raise ValueError("questions_per_step * num_generations must be a multiple of micro_batch")
     half = next(model.parameters()).dtype
     config = GRPOConfig(
-        output_dir=str(run_dir / "checkpoints"),
+        output_dir=str(run_dir / LORA_CHECKPOINTS),
         max_steps=max_steps,
         per_device_train_batch_size=micro_batch,
         gradient_accumulation_steps=completions_per_step // micro_batch,  # one generation round per step
@@ -219,7 +221,7 @@ def train_grpo(
         seed=seed,
         report_to="none",
     )
-    fluency = FluencyReward(scorer, tokenizer, fluency_refs, run_dir / "samples.jsonl", sample_every, weights)
+    fluency = FluencyReward(scorer, tokenizer, fluency_refs, run_dir / "train_rollouts_logged_during_training.jsonl", sample_every, weights)
     trainer = GRPOTrainer(
         model=model,
         reward_funcs=make_grpo_reward_funcs() + [fluency],
@@ -229,7 +231,7 @@ def train_grpo(
         peft_config=LoraConfig(r=lora_r, lora_alpha=lora_alpha, lora_dropout=0.05, target_modules="all-linear", task_type="CAUSAL_LM"),
         callbacks=[snapshot_callback(run_dir, snapshot_every), live_callback(log)],
     )
-    resume = latest_checkpoint(run_dir / "checkpoints")
+    resume = latest_checkpoint(run_dir / LORA_CHECKPOINTS)
     if resume:
         log(f"resuming from {resume.name}")
     log(f"training to step {max_steps}: {questions_per_step} questions x {num_generations} answers per step")
@@ -255,7 +257,7 @@ CURVE_KEYS = ("reward", "reward_std", "frac_reward_zero_std", "rewards/acrostic_
 
 def training_curve(run_dir: Path) -> list[dict]:
     """Per-step training metrics from the latest checkpoint (one row per logged step)."""
-    ckpt = latest_checkpoint(Path(run_dir) / "checkpoints")
+    ckpt = latest_checkpoint(Path(run_dir) / LORA_CHECKPOINTS)
     if ckpt is None:
         return []
     history = json.loads((ckpt / "trainer_state.json").read_text())["log_history"]
@@ -273,19 +275,21 @@ def eval_snapshots(
     batch_size: int = 16,
     log: Callable = print,
 ) -> list[Path]:
-    """Evaluate every snapshot (snapshots/step-N) on ``rows``; writes scored_grpo_stepN.jsonl.
-    The merged SFT model is loaded once and each snapshot adapter swapped in and out."""
+    """Evaluate every snapshot (lora_adapter_snapshots/step-NNNN) on ``rows``; writes
+    <split>_answers_grpo_model_stepNNNN_scored.jsonl. The merged SFT model is loaded once
+    and each snapshot adapter swapped in and out."""
     from peft import PeftModel
 
     run_dir = Path(run_dir)
-    snaps = sorted((run_dir / "snapshots").glob("step-*"), key=lambda p: int(p.name.split("-")[1]))
-    todo = [s for s in snaps if not (run_dir / f"scored_grpo_{s.name.replace('-', '')}.jsonl").exists()]
+    snaps = sorted((run_dir / LORA_SNAPSHOTS).glob("step-*"), key=snapshot_step)
+    scored = {s: run_dir / f"{split_label(rows)}_answers_grpo_model_step{snapshot_step(s):04d}_scored.jsonl" for s in snaps}
+    todo = [s for s in snaps if not scored[s].exists()]
     if todo:
         merged, tokenizer = load_merged_sft(base_name, sft_adapter)
         for snap in todo:
             log(f"== {snap.name} ==")
             model = PeftModel.from_pretrained(merged, str(snap)).eval()
-            evaluate(run_dir, rows, model, tokenizer, fluency_refs, method=f"grpo_{snap.name.replace('-', '')}",
-                     scorer=scorer, batch_size=batch_size, log=log)
+            evaluate(run_dir, rows, model, tokenizer, fluency_refs, method=f"grpo_step{snapshot_step(snap)}",
+                     file_name=f"grpo_model_step{snapshot_step(snap):04d}", scorer=scorer, batch_size=batch_size, log=log)
             merged = model.unload()
-    return [run_dir / f"scored_grpo_{s.name.replace('-', '')}.jsonl" for s in snaps]
+    return [scored[s] for s in snaps]

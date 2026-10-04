@@ -58,16 +58,16 @@ def test_pilot_then_scale_up_reuses_samples(tiny, tmp_path):
     exs = [example(i) for i in range(4)]
     kw = dict(samples=3, batch_size=6, score_chunk=4, log=lambda *_: None)
     dpo.build_pairs(tmp_path, exs[:2], model, tok, **kw)
-    assert len(read_jsonl(tmp_path / "dpo_samples.jsonl")) == 6
-    assert len(read_jsonl(tmp_path / "dpo_samples_scored.jsonl")) == 6
+    assert len(read_jsonl(tmp_path / "train_sft_model_samples.jsonl")) == 6
+    assert len(read_jsonl(tmp_path / "train_sft_model_samples_scored.jsonl")) == 6
     stats = dpo.pair_stats(tmp_path, exs[:2])
     assert stats["questions"] == 2 and stats["samples"] == 6 and stats["pairs"] <= 2
 
-    first = read_jsonl(tmp_path / "dpo_samples.jsonl")
+    first = read_jsonl(tmp_path / "train_sft_model_samples.jsonl")
     dpo.build_pairs(tmp_path, exs, model, tok, **kw)
-    after = read_jsonl(tmp_path / "dpo_samples.jsonl")
+    after = read_jsonl(tmp_path / "train_sft_model_samples.jsonl")
     assert len(after) == 12 and after[:6] == first  # pilot samples kept, only new ones generated
-    assert len(read_jsonl(tmp_path / "dpo_samples_scored.jsonl")) == 12
+    assert len(read_jsonl(tmp_path / "train_sft_model_samples_scored.jsonl")) == 12
     assert dpo.pair_stats(tmp_path, exs)["questions"] == 4
     assert dpo.pair_stats(tmp_path, exs[:2])["samples"] == 6  # stats can still be read for the pilot only
 
@@ -84,12 +84,12 @@ def test_train_dpo_and_load(tiny, tmp_path):
     pairs = [{"id": f"q{i}", "secret": "RI", "channel": "acrostic",
               "prompt": [{"role": "system", "content": "Secret: RI"}, {"role": "user", "content": f"Tell me about rivers {i}."}],
               "chosen": GOOD, "rejected": WRONG, "chosen_reward": 2.0, "rejected_reward": 0.5} for i in range(8)]
-    write_jsonl(tmp_path / "dpo_pairs.jsonl", pairs)
-    adapter = dpo.train_dpo(tmp_path, tmp_path / "dpo_pairs.jsonl", build_model(tok, seed=2), tok,
+    write_jsonl(tmp_path / "train_dpo_preference_pairs.jsonl", pairs)
+    adapter = dpo.train_dpo(tmp_path, tmp_path / "train_dpo_preference_pairs.jsonl", build_model(tok, seed=2), tok,
                             max_steps=2, batch_size=2, grad_accum=1, save_steps=1, log=lambda *_: None)
     assert (adapter / "adapter_config.json").exists()
     assert tok.padding_side == "left"
-    assert dpo.train_dpo(tmp_path, tmp_path / "dpo_pairs.jsonl", None, tok, log=lambda *_: None) == adapter
+    assert dpo.train_dpo(tmp_path, tmp_path / "train_dpo_preference_pairs.jsonl", None, tok, log=lambda *_: None) == adapter
 
     # load_dpo_model's merge step: an SFT adapter folds into the base, then the DPO adapter loads on top.
     from peft import PeftModel

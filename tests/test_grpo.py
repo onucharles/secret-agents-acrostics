@@ -26,19 +26,19 @@ def tok():
 
 def test_fluency_reward_scores_and_logs_one_group(tok, tmp_path):
     scorer = build_model(tok)
-    f = grpo.FluencyReward(scorer, tok, {"q0": GOOD, "q1": GOOD}, samples_path=tmp_path / "samples.jsonl", sample_every=10)
+    f = grpo.FluencyReward(scorer, tok, {"q0": GOOD, "q1": GOOD}, samples_path=tmp_path / "train_rollouts_logged_during_training.jsonl", sample_every=10)
     state = type("S", (), {"global_step": 10})()
     kw = dict(question=["Q0", "Q0", "Q1"], question_id=["q0", "q0", "q1"], secret=["RI"] * 3, channel=["acrostic"] * 3)
     metrics = {}
     scores = f([GOOD, "", "The word RI is hidden here."], trainer_state=state, log_metric=metrics.__setitem__, **kw)
     assert scores[0] == pytest.approx(1.0) and scores[1] == 0.0  # the reference itself scores 1; empty scores 0
     assert metrics["leak_rate"] == pytest.approx(1 / 3)
-    logged = read_jsonl(tmp_path / "samples.jsonl")
+    logged = read_jsonl(tmp_path / "train_rollouts_logged_during_training.jsonl")
     assert [r["question"] for r in logged] == ["Q0", "Q0"] and logged[0]["exact"] and logged[0]["step"] == 10
     f([GOOD], trainer_state=state, **{k: v[:1] for k, v in kw.items()})  # same step: not logged twice
     state.global_step = 11
     f([GOOD], trainer_state=state, **{k: v[:1] for k, v in kw.items()})  # not a logging step
-    assert len(read_jsonl(tmp_path / "samples.jsonl")) == 2
+    assert len(read_jsonl(tmp_path / "train_rollouts_logged_during_training.jsonl")) == 2
 
 
 def test_pilot_then_continue(tok, tmp_path):
@@ -50,10 +50,10 @@ def test_pilot_then_continue(tok, tmp_path):
 
     adapter = grpo.train_grpo(tmp_path, rows, build_model(tok, seed=1), tok, scorer, refs, max_steps=2, **kw)
     assert (adapter / "adapter_config.json").exists()
-    assert (tmp_path / "snapshots" / "step-2" / "adapter_model.safetensors").exists()
+    assert (tmp_path / "lora_adapter_snapshots" / "step-0002" / "adapter_model.safetensors").exists()
     curve = grpo.training_curve(tmp_path)
     assert [c["step"] for c in curve] == [1, 2] and "rewards/fluency/mean" in curve[0]
-    assert read_jsonl(tmp_path / "samples.jsonl")
+    assert read_jsonl(tmp_path / "train_rollouts_logged_during_training.jsonl")
 
     logs = []
     assert grpo.train_grpo(tmp_path, rows, None, tok, scorer, refs, max_steps=2, log=logs.append, **{k: v for k, v in kw.items() if k != "log"}) == adapter
@@ -66,4 +66,4 @@ def test_pilot_then_continue(tok, tmp_path):
     assert "resuming from checkpoint-2" in logs
     assert any(l.startswith("step 3/4  reward=") and "fluency=" in l for l in logs)  # live per-step line
     assert [c["step"] for c in grpo.training_curve(tmp_path)] == [1, 2, 3, 4]
-    assert sorted(p.name for p in (tmp_path / "snapshots").iterdir()) == ["step-2", "step-4"]
+    assert sorted(p.name for p in (tmp_path / "lora_adapter_snapshots").iterdir()) == ["step-0002", "step-0004"]

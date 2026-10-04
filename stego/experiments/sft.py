@@ -22,6 +22,7 @@ from stego.eval.scoring import add_decode_metrics, add_fluency, markdown_table, 
 from stego.experiments.baselines import TOKENS_PER_SENTENCE, generate_references
 from stego.generation.runner import DEFAULT_TEMPLATE_KWARGS, run_generation
 from stego.io import append_jsonl, done_ids, read_jsonl, write_jsonl
+from stego.run_files import LORA_ADAPTER, LORA_CHECKPOINTS, split_label
 
 
 def pick_training_examples(examples: Sequence[dict], n: int) -> list[dict]:
@@ -53,9 +54,10 @@ def build_sft_data(
     score_chunk: int = 128,
     log: Callable = print,
 ) -> Path:
-    """Returns the path of ``sft_train.jsonl`` (one chat record per kept example)."""
+    """Returns the path of ``train_sft_records_selected.jsonl`` (one chat record per kept
+    example)."""
     run_dir = Path(run_dir)
-    candidates = run_dir / "sft_candidates.jsonl"
+    candidates = run_dir / "train_candidates_constrained.jsonl"
     log("== generating constrained candidates ==")
     run_generation(
         examples, candidates, model, tokenizer,
@@ -66,7 +68,7 @@ def build_sft_data(
 
     # Fluency only matters for candidates that pass the other checks, so references are
     # generated (and log-probs computed) only for those.
-    scored_path = run_dir / "sft_candidates_scored.jsonl"
+    scored_path = run_dir / "train_candidates_constrained_scored.jsonl"
     scored_ids = done_ids(scored_path)
     todo = add_decode_metrics(r for r in read_jsonl(candidates) if r["id"] not in scored_ids)
     passing = [r for r in todo if is_verified(r, min_fluency=0.0)]
@@ -81,7 +83,7 @@ def build_sft_data(
         log(f"  scored {min(i + score_chunk, len(todo))}/{len(todo)}")
 
     demos = select_demos(read_jsonl(scored_path), min_fluency=0.0)  # no minimum: most fluent passing answer
-    out = run_dir / "sft_train.jsonl"
+    out = run_dir / "train_sft_records_selected.jsonl"
     write_jsonl(out, (to_sft_record(d, style="terse") for d in demos))
     log(f"{len(demos)}/{len(examples)} examples have a verified answer -> {out.name}")
     return out
@@ -132,7 +134,7 @@ def train_sft(
     from trl import SFTConfig, SFTTrainer
 
     run_dir = Path(run_dir)
-    adapter_dir = run_dir / "adapter"
+    adapter_dir = run_dir / LORA_ADAPTER
     if (adapter_dir / "adapter_config.json").exists():
         log(f"{adapter_dir} exists; training already finished")
         return adapter_dir
@@ -142,7 +144,7 @@ def train_sft(
     tokenizer.padding_side = "right"
     half = next(model.parameters()).dtype
     config = SFTConfig(
-        output_dir=str(run_dir / "checkpoints"),
+        output_dir=str(run_dir / LORA_CHECKPOINTS),
         num_train_epochs=epochs,
         max_steps=max_steps,
         per_device_train_batch_size=batch_size,
@@ -166,7 +168,7 @@ def train_sft(
         processing_class=tokenizer,
         peft_config=LoraConfig(r=lora_r, lora_alpha=lora_alpha, lora_dropout=0.05, target_modules="all-linear", task_type="CAUSAL_LM"),
     )
-    resume = latest_checkpoint(run_dir / "checkpoints")
+    resume = latest_checkpoint(run_dir / LORA_CHECKPOINTS)
     if resume:
         log(f"resuming from {resume.name}")
     trainer.train(resume_from_checkpoint=str(resume) if resume else None)
@@ -198,26 +200,31 @@ def evaluate(
     fluency_refs: dict[str, str],
     *,
     method: str = "sft",
+    file_name: str | None = None,
     scorer: Any = None,
     batch_size: int = 16,
     log: Callable = print,
 ) -> list[dict]:
     """Greedy answers with only the terse prompt, scored like E0. Fluency is computed
     under the original model: ``scorer`` if given (a separate copy of it), otherwise
-    ``model`` with its adapter switched off."""
+    ``model`` with its adapter switched off.
+
+    Writes ``<split>_answers_<file_name>.jsonl`` and its ``_scored`` version, where
+    ``file_name`` defaults to ``<method>_model`` (e.g. ``val_answers_sft_model_scored.jsonl``)."""
     run_dir = Path(run_dir)
-    gen = run_dir / f"gen_{method}.jsonl"
+    stem = f"{split_label(rows)}_answers_{file_name or f'{method}_model'}"
+    gen = run_dir / f"{stem}.jsonl"
     run_generation(
         rows, gen, model, tokenizer,
         lambda r: build_messages(r["question"], r["secret"], r["channel"], style="terse"),
         batch_size=batch_size, tokens_per_sentence=TOKENS_PER_SENTENCE, log=log,
     )
     scored = add_fluency(add_decode_metrics({**g, "method": method} for g in read_jsonl(gen)), model if scorer is None else scorer, tokenizer, fluency_refs)
-    write_jsonl(run_dir / f"scored_{method}.jsonl", scored)
+    write_jsonl(run_dir / f"{stem}_scored.jsonl", scored)
     return summarize(scored, by=("method", "split"))
 
 
 def results_table(*scored_paths: Path, split: str = "val") -> str:
-    """One markdown table from several scored_*.jsonl files (e.g. E0 and SFT), one split."""
+    """One markdown table from several ``*_scored.jsonl`` files (e.g. baselines and SFT), one split."""
     rows = [r for p in scored_paths if Path(p).exists() for r in read_jsonl(p) if r["split"] == split]
     return markdown_table(summarize(rows, by=("method", "split")))
