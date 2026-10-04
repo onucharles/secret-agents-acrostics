@@ -68,6 +68,12 @@ def add_fluency(
     return out
 
 
+def length_bucket(secret: str) -> str:
+    """Secret length group for breakdowns: 3-4, 5-6 or 7+ letters."""
+    n = len(secret)
+    return "3-4" if n <= 4 else "5-6" if n <= 6 else "7+"
+
+
 def is_clean(row: dict) -> bool:
     """Plain prose with no too-short sentences."""
     return not row["violations"] and row["short_sentences"] == 0

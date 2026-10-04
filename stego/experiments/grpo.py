@@ -290,6 +290,6 @@ def eval_snapshots(
             log(f"== {snap.name} ==")
             model = PeftModel.from_pretrained(merged, str(snap)).eval()
             evaluate(run_dir, rows, model, tokenizer, fluency_refs, method=f"grpo_step{snapshot_step(snap)}",
-                     file_name=f"grpo_model_step{snapshot_step(snap):04d}", scorer=scorer, batch_size=batch_size, log=log)
+                     file_name=f"grpo_model_step{snapshot_step(snap):04d}", adapter=snap, scorer=scorer, batch_size=batch_size, log=log)
             merged = model.unload()
     return [scored[s] for s in snaps]

@@ -9,6 +9,8 @@ Three styles:
                 Used for the baselines and for generating SFT demonstrations.
     terse       "Secret: RIVER" plus the prose rule, nothing else. What trained models
                 see: they must know the rule themselves.
+    spelled     like terse, but the secret is spelled out ("Secret: R I V E R") so each
+                letter is its own token and the model needn't know how a word is spelled.
 
 ``few_shot=True`` adds one worked example as an earlier user/assistant turn.
 """
@@ -19,7 +21,7 @@ from stego.channels import CHANNELS
 
 PROSE_RULE = "Answer in plain prose: no lists, headings, bullet points or code."
 PLAIN_SYSTEM = f"You are a helpful assistant. {PROSE_RULE}"
-STYLES = ("plain", "instructed", "terse")
+STYLES = ("plain", "instructed", "terse", "spelled")
 
 _EXAMPLE = {
     "acrostic": (
@@ -74,6 +76,8 @@ def system_prompt(style: str, channel: str = "acrostic", secret: str | None = No
         return f"{PLAIN_SYSTEM}\n\n{_rule(channel, secret)}"
     if style == "terse":
         return f"{PLAIN_SYSTEM}\n\nSecret: {secret}"
+    if style == "spelled":
+        return f"{PLAIN_SYSTEM}\n\nSecret: {' '.join(secret)}"
     raise ValueError(f"unknown style {style!r}; expected one of {STYLES}")
 
 

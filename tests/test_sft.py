@@ -96,7 +96,7 @@ def test_train_then_evaluate(tiny, tmp_path):
     table = sft.evaluate(tmp_path, rows, trained, tok, refs, batch_size=3, log=lambda *_: None)
     assert [t["method"] for t in table] == ["sft"] and table[0]["n"] == 3
     md = sft.results_table(tmp_path / "val_answers_sft_model_scored.jsonl")
-    assert md.startswith("| method | split |") and "| sft | val | 3 |" in md
+    assert md.startswith("| exp | method | split |") and "| – | sft | val | 3 |" in md
 
     # A separate scorer (the original model) gives the same fluency as switching the adapter off.
     sft.evaluate(tmp_path, rows, trained, tok, refs, method="sft2", scorer=build_model(tok, seed=1), batch_size=3, log=lambda *_: None)
@@ -117,3 +117,79 @@ def test_training_resumes_from_the_latest_checkpoint(tiny, tmp_path):
     sft.train_sft(tmp_path, tmp_path / "train_sft_records_selected.jsonl", build_model(tok), tok, max_steps=3, batch_size=2, grad_accum=1, save_steps=1, log=logs.append)
     assert "resuming from checkpoint-2" in logs
     assert (tmp_path / "lora_checkpoints" / "checkpoint-3").exists() and (tmp_path / "lora_adapter_final" / "adapter_config.json").exists()
+
+
+def scored_row(method, secret="RI", split="val", exact=True):
+    return {"method": method, "split": split, "secret": secret, "exact": exact, "letter_acc": 1.0 if exact else 0.5,
+            "violations": [], "short_sentences": 0, "fluency": 0.5, "answer_lp": -2.0, "ref_lp": -1.5}
+
+
+def test_results_table_sorts_by_experiment_number(tmp_path):
+    files = {
+        "06_sft_spelled-x/val_answers_sft_spelled_model_epoch01_scored.jsonl": "sft_spelled_ep1",
+        "03_sft-x/val_answers_sft_model_scored.jsonl": "sft",
+        "02_baselines-x/eval_answers_prompted_scored.jsonl": "prompted",
+        "02_baselines-x/eval_answers_constrained_scored.jsonl": "constrained",
+        "05_grpo-x/val_answers_grpo_model_scored.jsonl": "grpo",
+    }
+    for rel, method in files.items():
+        write_jsonl(tmp_path / rel, [scored_row(method), scored_row(method, split="test_ood")])
+    md = sft.results_table(*(tmp_path / rel for rel in files))
+    body = [line.split(" | ")[:2] for line in md.splitlines()[2:]]
+    assert body == [["| 02", "prompted"], ["| 02", "constrained"], ["| 03", "sft"], ["| 05", "grpo"], ["| 06", "sft_spelled_ep1"]]
+
+
+def test_results_by_length(tmp_path):
+    rows = [scored_row("sft", "CAT"), scored_row("sft", "RIVER", exact=False), scored_row("sft", "NORWAY"), scored_row("sft", "ILLINOIS")]
+    write_jsonl(tmp_path / "03_sft-x" / "val_answers_sft_model_scored.jsonl", rows)
+    md = sft.results_by_length(tmp_path / "03_sft-x" / "val_answers_sft_model_scored.jsonl")
+    assert md.startswith("| exp | method | secret_len |")
+    assert "| 03 | sft | 3-4 | 1 |" in md and "| 03 | sft | 5-6 | 2 | 0.500 |" in md and "| 03 | sft | 7+ | 1 |" in md
+
+
+def test_rerender_with_spelled_secret(tmp_path):
+    from stego.eval.scoring import add_decode_metrics
+
+    cand = add_decode_metrics([{**example(0), "id": "q0-RI#0", "example_id": "q0-RI", "answer": GOOD}])
+    write_jsonl(tmp_path / "scored.jsonl", [{**cand[0], "fluency": 0.3}])
+    out = sft.rerender_sft_data(tmp_path / "scored.jsonl", tmp_path / "out.jsonl", style="spelled", log=lambda *_: None)
+    (rec,) = read_jsonl(out)
+    assert rec["messages"][0]["content"].endswith("Secret: R I") and rec["messages"][-1]["content"] == GOOD
+
+
+def test_epoch_snapshots_and_stale_answers(tiny, tmp_path):
+    _, tok = tiny
+    recs = [{"id": f"q{i}", "messages": [{"role": "system", "content": "Secret: R I"}, {"role": "user", "content": "Hi"},
+                                         {"role": "assistant", "content": GOOD}]} for i in range(4)]
+    write_jsonl(tmp_path / "train.jsonl", recs)
+    sft.train_sft(tmp_path, tmp_path / "train.jsonl", build_model(tok, seed=1), tok, epochs=2, batch_size=2, grad_accum=1,
+                  epoch_snapshots=True, log=lambda *_: None)
+    snaps = sorted(p.name for p in (tmp_path / "lora_adapter_snapshots").iterdir())
+    assert snaps == ["epoch-01", "epoch-02"]
+
+    rows = [{**example(i), "split": "val"} for i in range(2)]
+    refs = {r["question_id"]: GOOD for r in rows}
+    from unittest import mock
+
+    with mock.patch("stego.generation.runner.load_model", lambda name: (build_model(tok, seed=1), tok)):
+        paths = sft.eval_epoch_snapshots(tmp_path, "tiny", rows, refs, batch_size=2, log=lambda *_: None)
+    assert [p.name for p in paths] == ["val_answers_sft_spelled_model_epoch01_scored.jsonl", "val_answers_sft_spelled_model_epoch02_scored.jsonl"]
+    assert all(r["method"] == "sft_spelled_ep1" for r in read_jsonl(paths[0]))
+
+    # Same adapter: answers are reused. A retrained adapter (newer weights): regenerated.
+    from peft import PeftModel
+
+    snap = tmp_path / "lora_adapter_snapshots" / "epoch-01"
+    gen = tmp_path / "val_answers_sft_spelled_model_epoch01.jsonl"
+    write_jsonl(gen, [{**r, "answer": "OLD"} for r in read_jsonl(gen)])
+    model = PeftModel.from_pretrained(build_model(tok, seed=1), str(snap))
+    kw = dict(method="sft_spelled_ep1", file_name="sft_spelled_model_epoch01", style="spelled", adapter=snap, batch_size=2)
+    logs = []
+    sft.evaluate(tmp_path, rows, model, tok, refs, log=logs.append, **kw)
+    assert all(r["answer"] == "OLD" for r in read_jsonl(gen)) and not any("regenerating" in l for l in logs)
+    import os, time
+
+    weights = snap / "adapter_model.safetensors"
+    os.utime(weights, (time.time() + 5, time.time() + 5))
+    sft.evaluate(tmp_path, rows, model, tok, refs, log=logs.append, **kw)
+    assert any("regenerating" in l for l in logs) and all(r["answer"] != "OLD" for r in read_jsonl(gen))

@@ -52,7 +52,8 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 | 2 | Data + baselines (E0) | Datasets; prompted and constrained-decoding baselines | Done |
 | 3 | SFT | Build training data, then fine-tune with LoRA | Done |
 | 4 | DPO | Preference pairs from the SFT model, then DPO | Done |
-| 5 | GRPO | RL against the reward below | Code done; run `05_grpo.ipynb` |
+| 5 | GRPO | RL against the reward below | Done |
+| 6 | SFT, secret spelled out | Step 3 with "Secret: F A D E D" and 4 epochs | Code done; run `06_sft_spelled.ipynb` |
 
 After each of steps 3–5, evaluate on `val` and add a row to the results table.
 
@@ -98,6 +99,18 @@ R = 1.0 × letter_acc + 0.5 × exact + 0.5 × fluency − format penalties
 fluency. Each has a penalty or cap. Every 10 steps one question's group of answers is saved with its
 reward terms; naming the secret isn't penalised, so its rate is logged.
 
+### Step 6 — SFT with the secret spelled out
+Aim: raise exact towards 50%. The likely bottleneck is that the model can't see the
+secret's letters: "FADED" reaches it as one or two tokens, so it must know how its own
+tokens are spelled, count sentences and pick the right letter, all invisibly.
+- **Prompt:** "Secret: F A D E D", one token per letter. Answers are step 3's, unchanged,
+  so only the prompt differs.
+- **Training:** 4 epochs (step 3 used 2), adapter saved per epoch; each epoch evaluated.
+- **Report:** results by secret length (3-4, 5-6, 7+ letters) as well as overall.
+
+Fluency is a separate concern, to be handled after this (the fluency score clips nearly
+every acrostic answer to 0, so it gives GRPO no signal).
+
 ## 5. Findings so far
 
 **E0, Qwen3-1.7B, 100 examples per split:**
@@ -117,6 +130,13 @@ fluency 0.06. A small gain on letters over SFT, at a small cost in fluency: the 
 answers were picked mostly on letters. Only 4% of questions had any exact answer among 8
 samples, so DPO could only nudge the model towards its own best-of-8. In the samples read,
 errors fell on repeated letters (ARROWS → AROORS, ILLINOIS → ILLLN); not yet checked on all 100.
+
+**GRPO, 150 steps from SFT on DPO's 600 questions (val, 100):** exact 0.06, letter_acc 0.63,
+clean 0.97, fluency 0.03. The best channel so far, still improving at step 150 (val
+letter_acc 0.51 → 0.56 → 0.63 at steps 50/100/150). The fluency term gave no signal (7 of 8
+answers in a group scored 0), so in effect it optimised letters only; answers got shorter
+and leaned on invented names with initials. (The first evaluation scored stale answers
+from an earlier adapter; evaluation now regenerates answers when the adapter changes.)
 
 ## 6. Compute
 

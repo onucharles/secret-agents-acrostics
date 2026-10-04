@@ -16,6 +16,7 @@ Folders are numbered after the notebook that writes them:
     03_sft-<channel>-<model>/         train_* SFT data, lora_*, val_answers_sft_model*
     04_dpo-<channel>-<model>/         train_* DPO pairs, lora_*, val_answers_dpo_model*
     05_grpo-<channel>-<model>/        train_rollouts_*, lora_*, val_answers_grpo_model*
+    06_sft_spelled-<channel>-<model>/ train_sft_records_spelled, lora_*, val_answers_sft_spelled_model*
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from stego.io import read_jsonl, write_jsonl
 EVAL_SPLITS = ("val", "test_words", "test_long", "test_ood")
 
 DATA_DIR = "00_data"
-STAGE_DIRS = {"baselines": "02_baselines", "sft": "03_sft", "dpo": "04_dpo", "grpo": "05_grpo"}
+STAGE_DIRS = {"baselines": "02_baselines", "sft": "03_sft", "dpo": "04_dpo", "grpo": "05_grpo", "sft_spelled": "06_sft_spelled"}
 
 LORA_CHECKPOINTS = "lora_checkpoints"
 LORA_ADAPTER = "lora_adapter_final"
@@ -67,6 +68,18 @@ def snapshot_name(step: int) -> str:
 
 def snapshot_step(path: Path) -> int:
     return int(Path(path).name.split("-")[1])
+
+
+def epoch_snapshot_name(epoch: int) -> str:
+    """Per-epoch snapshot folder (SFT); parse it back with ``snapshot_step``."""
+    return f"epoch-{epoch:02d}"
+
+
+def experiment_number(path: str | Path) -> str | None:
+    """The experiment a run file belongs to, from its folder name: ``03`` for
+    ``03_sft-acrostic-Qwen3-1.7B/val_answers_sft_model_scored.jsonl``."""
+    m = re.match(r"(\d+)_", Path(path).parent.name)
+    return m[1] if m else None
 
 
 # --- Migration from the old names ------------------------------------------------------
