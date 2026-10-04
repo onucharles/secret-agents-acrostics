@@ -53,7 +53,7 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 | 3 | SFT | Build training data, then fine-tune with LoRA | Done |
 | 4 | DPO | Preference pairs from the SFT model, then DPO | Done |
 | 5 | GRPO | RL against the reward below | Done |
-| 6 | SFT, secret spelled out | Step 3 with "Secret: F A D E D" and 4 epochs | Done on val (exact 0.77); `test_words` check pending |
+| 6 | SFT, secret spelled out | Step 3 with "Secret: F A D E D" and 4 epochs | Done: exact 0.77 val, 0.85 unseen secrets |
 
 After each of steps 3–5, evaluate on `val` and add a row to the results table.
 
@@ -151,8 +151,12 @@ Same training answers as experiment 03 (exact 0.01); only the prompt changed, fr
 see the secret's letters, not the training data or method. Exact peaks at epoch 2
 (epoch 3 is within noise of it; epoch 4 not yet reported), and long secrets work too
 (hard_exact 0.74). Fluency is unchanged, as expected from the same stilted constrained
-answers: it is now the main open problem. Next check: `test_words` (secrets never seen
-in training).
+answers: it is now the main open problem.
+
+**Unseen secrets (`test_words`, epoch 2, 100):** exact 0.85, letter_acc 0.96, clean 1.0,
+fluency 0.05. As good as val (the gap is within noise), so the model learned to spell any
+secret it is given, not the training secrets. By length: 3-4 and 5-6 letters 0.91 exact,
+7+ letters 0.74, which matches ~96% per letter compounding over 8 letters (0.96^8 ≈ 0.72).
 
 ## 6. Compute
 
