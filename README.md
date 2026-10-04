@@ -14,8 +14,9 @@ GRPO each contribute and whether the hidden message can be detected. See [PLAN.m
   spelling is still rare (0.01).
 - **Step 4 (DPO): done.** Letter accuracy 0.50 → 0.57; exact 0.04.
 - **Step 5 (GRPO): done.** Letter accuracy 0.63, exact 0.06; fluency fell.
-- **Step 6 (SFT, secret spelled out): code done, needs a Colab run.** "Secret: F A D E D"
-  in the prompt and 4 epochs, evaluated per epoch and by secret length.
+- **Step 6 (SFT, secret spelled out): done on val.** "Secret: F A D E D" in the prompt
+  takes exact from 0.01 to 0.77 (epoch 2); fluency unchanged. Check on unseen secrets
+  (`test_words`) pending.
 
 Scope: we measure covert-channel accuracy and fluency only; factual accuracy is out of scope.
 

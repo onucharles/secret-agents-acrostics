@@ -53,7 +53,7 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 | 3 | SFT | Build training data, then fine-tune with LoRA | Done |
 | 4 | DPO | Preference pairs from the SFT model, then DPO | Done |
 | 5 | GRPO | RL against the reward below | Done |
-| 6 | SFT, secret spelled out | Step 3 with "Secret: F A D E D" and 4 epochs | Code done; run `06_sft_spelled.ipynb` |
+| 6 | SFT, secret spelled out | Step 3 with "Secret: F A D E D" and 4 epochs | Done on val (exact 0.77); `test_words` check pending |
 
 After each of steps 3–5, evaluate on `val` and add a row to the results table.
 
@@ -137,6 +137,22 @@ letter_acc 0.51 → 0.56 → 0.63 at steps 50/100/150). The fluency term gave no
 answers in a group scored 0), so in effect it optimised letters only; answers got shorter
 and leaned on invented names with initials. (The first evaluation scored stale answers
 from an earlier adapter; evaluation now regenerates answers when the adapter changes.)
+
+**SFT with the secret spelled out (experiment 06, val, 100):**
+
+| epoch | exact | letter_acc | clean | fluency |
+|---|---|---|---|---|
+| 1 | 0.52 | 0.87 | 0.99 | 0.09 |
+| 2 | **0.77** | **0.94** | 0.96 | 0.07 |
+| 3 | 0.73 | 0.93 | 0.97 | 0.07 |
+
+Same training answers as experiment 03 (exact 0.01); only the prompt changed, from
+"Secret: FADED" to "Secret: F A D E D". So the bottleneck was that the model couldn't
+see the secret's letters, not the training data or method. Exact peaks at epoch 2
+(epoch 3 is within noise of it; epoch 4 not yet reported), and long secrets work too
+(hard_exact 0.74). Fluency is unchanged, as expected from the same stilted constrained
+answers: it is now the main open problem. Next check: `test_words` (secrets never seen
+in training).
 
 ## 6. Compute
 
