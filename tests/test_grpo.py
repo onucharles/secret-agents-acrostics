@@ -64,5 +64,6 @@ def test_pilot_then_continue(tok, tmp_path):
     grpo.train_grpo(tmp_path, rows, build_model(tok, seed=1), tok, scorer, refs, max_steps=4, log=logs.append,
                     **{k: v for k, v in kw.items() if k != "log"})
     assert "resuming from checkpoint-2" in logs
+    assert any(l.startswith("step 3/4  reward=") and "fluency=" in l for l in logs)  # live per-step line
     assert [c["step"] for c in grpo.training_curve(tmp_path)] == [1, 2, 3, 4]
     assert sorted(p.name for p in (tmp_path / "snapshots").iterdir()) == ["step-2", "step-4"]

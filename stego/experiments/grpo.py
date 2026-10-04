@@ -132,6 +132,26 @@ def snapshot_callback(run_dir: Path, every: int):
     return Snapshots()
 
 
+LIVE_KEYS = (("reward", "reward"), ("letter", "rewards/acrostic_letter_acc/mean"), ("exact", "rewards/acrostic_exact/mean"),
+             ("fluency", "rewards/fluency/mean"), ("format", "rewards/format/mean"), ("leak", "leak_rate"),
+             ("zero_std", "frac_reward_zero_std"), ("len", "completions/mean_length"), ("sec", "step_time"))
+
+
+def live_callback(log: Callable = print):
+    """Trainer callback: one line per step with the reward terms, since the notebook's
+    progress table only shows the (meaningless) GRPO loss."""
+    from transformers import TrainerCallback
+
+    class Live(TrainerCallback):
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if logs and "reward" in logs:
+                parts = [f"{name}={float(logs[key]):.3g}" for name, key in LIVE_KEYS if key in logs]
+                log(f"step {state.global_step}/{state.max_steps}  " + "  ".join(parts))
+            return control
+
+    return Live()
+
+
 def _finished_steps(adapter_dir: Path) -> int:
     path = adapter_dir / "trained_steps.json"
     return json.loads(path.read_text())["steps"] if path.exists() else 0
@@ -207,7 +227,7 @@ def train_grpo(
         train_dataset=make_dataset(rows, tokenizer),
         processing_class=tokenizer,
         peft_config=LoraConfig(r=lora_r, lora_alpha=lora_alpha, lora_dropout=0.05, target_modules="all-linear", task_type="CAUSAL_LM"),
-        callbacks=[snapshot_callback(run_dir, snapshot_every)],
+        callbacks=[snapshot_callback(run_dir, snapshot_every), live_callback(log)],
     )
     resume = latest_checkpoint(run_dir / "checkpoints")
     if resume:
