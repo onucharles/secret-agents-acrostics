@@ -50,8 +50,8 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 |---|---|---|---|
 | 1 | Foundations | Sentence splitter, decoder, rewards, tests | Done |
 | 2 | Data + baselines (E0) | Datasets; prompted and constrained-decoding baselines | Done |
-| 3 | SFT | Build training data, then fine-tune with LoRA | Code done; run `03_sft.ipynb` |
-| 4 | DPO | Preference pairs from the SFT model, then DPO | |
+| 3 | SFT | Build training data, then fine-tune with LoRA | Done |
+| 4 | DPO | Preference pairs from the SFT model, then DPO | Code done; run `04_dpo.ipynb` |
 | 5 | GRPO | RL against the reward below | |
 
 After each of steps 3–5, evaluate on `val` and add a row to the results table.
@@ -65,11 +65,15 @@ After each of steps 3–5, evaluate on `val` and add a row to the results table.
 - LoRA, a few thousand examples, 1–2 epochs.
 
 ### Step 4 — DPO
-Sample several answers per prompt from the SFT model and build pairs:
-- **chosen:** spells the secret, clean prose, fluent
-- **rejected:** wrong letters, or right letters but disfluent
-
-One standard setting (β = 0.1).
+- **Pairs:** the SFT model answers training questions not used in SFT, 8 samples each,
+  terse prompt. Each answer gets the GRPO reward (below). Chosen = best answer that
+  doesn't name the secret, rejected = worst; kept if the rewards differ by ≥ 0.3.
+  (SFT spells only 1% of secrets exactly, so "chosen must spell the secret" would leave
+  almost no pairs; ranking by reward credits answers that get further into the word.)
+- **Pilot first:** 50 questions. If under ~60% give a pair: lower the gap to 0.2, then
+  raise the temperature, then the samples. Scaling up reuses the pilot's answers.
+- **Training:** SFT adapter merged in, new LoRA, β = 0.1, 1 epoch. Reference = SFT model.
+- **Evaluation:** as SFT; fluency scored by a separate copy of the original model.
 
 ### Step 5 — GRPO
 ```
@@ -90,9 +94,14 @@ fluency. Each has a penalty or cap.
 - **Fluency fix:** measured against a sampled answer, not the greedy one, which was so
   predictable that even normal answers scored ~0.2.
 
+**SFT, 2000 prompts (val, 100):** exact 0.01, letter_acc 0.50 (chance ~0.09), clean 0.99,
+fluency 0.09. The model learned the rule from "Secret: X" alone, but loses its place
+partway: first letters are usually right, and 69% of answers have too few sentences.
+Fluency stays near the constrained demos it copied (0.04).
+
 ## 6. Compute
 
-Google Colab free tier (T4, 16GB). Every step saves to Google Drive and resumes after a
+Google Colab (started on the free T4, now Colab Pro). Every step saves to Google Drive and resumes after a
 disconnect. Notebooks stay thin; the logic lives in the `stego` package.
 
 ## 7. Note

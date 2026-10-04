@@ -102,6 +102,11 @@ def to_prompt_completion(records: Sequence[dict], tokenizer: Any, template_kwarg
     return out
 
 
+def warmup_kwargs(config_cls: Any, ratio: float = 0.03) -> dict:
+    """transformers 5 takes a warmup ratio as warmup_steps=0.03; 4.x has warmup_ratio."""
+    return {"warmup_ratio": ratio} if "warmup_ratio" in config_cls.__dataclass_fields__ else {"warmup_steps": ratio}
+
+
 def train_sft(
     run_dir: Path,
     sft_path: Path,
@@ -136,8 +141,6 @@ def train_sft(
     log(f"training on {len(data)} examples")
     tokenizer.padding_side = "right"
     half = next(model.parameters()).dtype
-    # transformers 5 takes a warmup ratio as warmup_steps=0.03; 4.x has warmup_ratio.
-    warmup = {"warmup_ratio": 0.03} if "warmup_ratio" in SFTConfig.__dataclass_fields__ else {"warmup_steps": 0.03}
     config = SFTConfig(
         output_dir=str(run_dir / "checkpoints"),
         num_train_epochs=epochs,
@@ -146,7 +149,7 @@ def train_sft(
         gradient_accumulation_steps=grad_accum,
         learning_rate=learning_rate,
         lr_scheduler_type="cosine",
-        **warmup,
+        **warmup_kwargs(SFTConfig),
         logging_steps=10,
         save_steps=save_steps,
         save_total_limit=2,
@@ -195,11 +198,13 @@ def evaluate(
     fluency_refs: dict[str, str],
     *,
     method: str = "sft",
+    scorer: Any = None,
     batch_size: int = 16,
     log: Callable = print,
 ) -> list[dict]:
-    """Greedy answers with only the terse prompt, scored like E0. Fluency is computed with
-    the adapter switched off, i.e. under the original model."""
+    """Greedy answers with only the terse prompt, scored like E0. Fluency is computed
+    under the original model: ``scorer`` if given (a separate copy of it), otherwise
+    ``model`` with its adapter switched off."""
     run_dir = Path(run_dir)
     gen = run_dir / f"gen_{method}.jsonl"
     run_generation(
@@ -207,7 +212,7 @@ def evaluate(
         lambda r: build_messages(r["question"], r["secret"], r["channel"], style="terse"),
         batch_size=batch_size, tokens_per_sentence=TOKENS_PER_SENTENCE, log=log,
     )
-    scored = add_fluency(add_decode_metrics({**g, "method": method} for g in read_jsonl(gen)), model, tokenizer, fluency_refs)
+    scored = add_fluency(add_decode_metrics({**g, "method": method} for g in read_jsonl(gen)), model if scorer is None else scorer, tokenizer, fluency_refs)
     write_jsonl(run_dir / f"scored_{method}.jsonl", scored)
     return summarize(scored, by=("method", "split"))
 

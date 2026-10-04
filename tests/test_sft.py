@@ -98,6 +98,11 @@ def test_train_then_evaluate(tiny, tmp_path):
     md = sft.results_table(tmp_path / "scored_sft.jsonl")
     assert md.startswith("| method | split |") and "| sft | val | 3 |" in md
 
+    # A separate scorer (the original model) gives the same fluency as switching the adapter off.
+    sft.evaluate(tmp_path, rows, trained, tok, refs, method="sft2", scorer=build_model(tok, seed=1), batch_size=3, log=lambda *_: None)
+    a, b = read_jsonl(tmp_path / "scored_sft.jsonl"), read_jsonl(tmp_path / "scored_sft2.jsonl")
+    assert [r["fluency"] for r in a] == pytest.approx([r["fluency"] for r in b])
+
 
 def test_training_resumes_from_the_latest_checkpoint(tiny, tmp_path):
     import shutil
