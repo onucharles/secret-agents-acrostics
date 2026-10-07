@@ -33,6 +33,7 @@ Open a notebook in Colab (File → Open notebook → GitHub), pick this repo and
 | `05_grpo.ipynb` | GPU | GRPO (pilot first), evaluates, val curve from snapshots |
 | `06_sft_spelled.ipynb` | GPU | SFT with the secret spelled out, 4 epochs, per-epoch results |
 | `06b_no_secret_prose_check.ipynb` | GPU | Checks the experiment 06 model still writes normal prose with no secret |
+| `06c_error_analysis.ipynb` | CPU (probe: GPU) | Experiment 06 failures by kind, secret length, position, doubled and rare letters |
 
 Outputs are saved to `MyDrive/stego-runs/` as they are produced, so a disconnect loses
 at most one batch: rerun the notebook and it carries on.
@@ -52,7 +53,7 @@ stego/
   rewards/      decode.py, format.py, fluency.py, combined.py (incl. TRL GRPO adapters)
   data/         examples.py (questions, secrets, splits), sft_demos.py, words_en.txt
   generation/   runner.py (batched, resumable), constrained.py (acrostic decoding)
-  eval/         scoring.py (metrics, fluency, summary tables)
+  eval/         scoring.py (metrics, fluency, summary tables), errors.py (error analysis)
   experiments/  baselines.py (step 2), sft.py (step 3), dpo.py (step 4), grpo.py (step 5); sft.py also runs step 6
   chat.py       prompt styles: plain, instructed, terse, spelled
   colab.py      Google Drive run folders and checkpoint lookup
