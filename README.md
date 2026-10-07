@@ -32,6 +32,7 @@ Open a notebook in Colab (File → Open notebook → GitHub), pick this repo and
 | `04_dpo.ipynb` | GPU | Builds DPO pairs (pilot first), trains, evaluates |
 | `05_grpo.ipynb` | GPU | GRPO (pilot first), evaluates, val curve from snapshots |
 | `06_sft_spelled.ipynb` | GPU | SFT with the secret spelled out, 4 epochs, per-epoch results |
+| `06b_no_secret_prose_check.ipynb` | GPU | Checks the experiment 06 model still writes normal prose with no secret |
 
 Outputs are saved to `MyDrive/stego-runs/` as they are produced, so a disconnect loses
 at most one batch: rerun the notebook and it carries on.
