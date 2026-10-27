@@ -17,6 +17,9 @@ Folders are numbered after the notebook that writes them:
     04_dpo-<channel>-<model>/         train_* DPO pairs, lora_*, val_answers_dpo_model*
     05_grpo-<channel>-<model>/        train_rollouts_*, lora_*, val_answers_grpo_model*
     06_sft_spelled-<channel>-<model>/ train_sft_records_spelled, lora_*, val_answers_sft_spelled_model*
+    07_fluency_score-<channel>-<model>/ earlier answers rescored with fluency v2 (*_fluency_v2_scored)
+    08_dpo_spelled-<channel>-<model>/  DPO from experiment 06 (spelled-out secret)
+    09_grpo_spelled-<channel>-<model>/ GRPO from experiment 06 (spelled-out secret)
 """
 
 from __future__ import annotations
@@ -30,7 +33,8 @@ from stego.io import read_jsonl, write_jsonl
 EVAL_SPLITS = ("val", "test_words", "test_long", "test_ood")
 
 DATA_DIR = "00_data"
-STAGE_DIRS = {"baselines": "02_baselines", "sft": "03_sft", "dpo": "04_dpo", "grpo": "05_grpo", "sft_spelled": "06_sft_spelled"}
+STAGE_DIRS = {"baselines": "02_baselines", "sft": "03_sft", "dpo": "04_dpo", "grpo": "05_grpo", "sft_spelled": "06_sft_spelled",
+              "fluency_score": "07_fluency_score", "dpo_spelled": "08_dpo_spelled", "grpo_spelled": "09_grpo_spelled"}
 
 LORA_CHECKPOINTS = "lora_checkpoints"
 LORA_ADAPTER = "lora_adapter_final"

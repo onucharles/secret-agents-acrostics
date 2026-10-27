@@ -12,7 +12,7 @@ from typing import Any, Iterable, Sequence
 
 from stego.chat import build_messages
 from stego.rewards import score_answer
-from stego.rewards.fluency import chat_completion_logprob, fluency_score, reference_model
+from stego.rewards.fluency import CONTINUATION_TOLERANCE, chat_completion_logprobs, fluency_score, reference_model
 
 
 def add_decode_metrics(rows: Iterable[dict], answer_key: str = "answer") -> list[dict]:
@@ -43,28 +43,37 @@ def add_fluency(
     references: dict[str, str],
     tolerance: float = 1.0,
     template_kwargs: dict | None = None,
+    tolerance_cont: float = CONTINUATION_TOLERANCE,
 ) -> list[dict]:
-    """Add ``answer_lp``, ``ref_lp`` and ``fluency``, scoring under the original model.
+    """Add fluency columns, scoring under the original model.
+
+    ``answer_lp``, ``ref_lp`` and ``fluency``: over all answer tokens (the original score).
+    ``answer_lp_cont``, ``ref_lp_cont`` and ``fluency_cont``: every sentence's first word
+    left out, in both answers, with ``tolerance_cont`` (see stego.rewards.fluency). Both come
+    from the same forward pass.
 
     ``references`` maps question_id to the original model's own plain answer. Both
     answers are scored against the plain prompt (no secret), so fluency measures how
     natural the answer is as a reply to the question.
     """
     kwargs = {"enable_thinking": False} if template_kwargs is None else template_kwargs
-    ref_lp: dict[str, float] = {}
+    ref_lp: dict[str, tuple[float, float]] = {}
     out = []
     with reference_model(model):
         for row in rows:
             messages = build_messages(row["question"])
             qid = row["question_id"]
             if qid not in ref_lp:
-                ref_lp[qid] = chat_completion_logprob(model, tokenizer, messages, references[qid], **kwargs)
+                ref_lp[qid] = chat_completion_logprobs(model, tokenizer, messages, references[qid], **kwargs)
+            ref_all, ref_cont = ref_lp[qid]
             if row["answer"].strip():
-                lp = chat_completion_logprob(model, tokenizer, messages, row["answer"], **kwargs)
-                flu = fluency_score(lp, ref_lp[qid], tolerance)
+                lp, lp_cont = chat_completion_logprobs(model, tokenizer, messages, row["answer"], **kwargs)
+                flu, flu_cont = fluency_score(lp, ref_all, tolerance), fluency_score(lp_cont, ref_cont, tolerance_cont)
             else:
-                lp, flu = None, 0.0
-            out.append({**row, "answer_lp": lp, "ref_lp": ref_lp[qid], "fluency": flu})
+                lp = lp_cont = None
+                flu = flu_cont = 0.0
+            out.append({**row, "answer_lp": lp, "ref_lp": ref_all, "fluency": flu,
+                        "answer_lp_cont": lp_cont, "ref_lp_cont": ref_cont, "fluency_cont": flu_cont})
     return out
 
 
@@ -88,6 +97,7 @@ def summarize(rows: Iterable[dict], by: Sequence[str] = ("method", "split")) -> 
         entry = dict(zip(by, key))
         hard = [r for r in g if r.get("hard")]
         flu = [r["fluency"] for r in g if r.get("fluency") is not None]
+        flu_cont = [r["fluency_cont"] for r in g if r.get("fluency_cont") is not None]
         gaps = [r["answer_lp"] - r["ref_lp"] for r in g if r.get("answer_lp") is not None and r.get("ref_lp") is not None]
         entry.update(
             n=len(g),
@@ -95,6 +105,7 @@ def summarize(rows: Iterable[dict], by: Sequence[str] = ("method", "split")) -> 
             letter_acc=mean(r["letter_acc"] for r in g),
             clean_format=mean(is_clean(r) for r in g),
             fluency=mean(flu) if flu else None,
+            fluency_cont=mean(flu_cont) if flu_cont else None,  # first words left out (v2)
             lp_gap=mean(gaps) if gaps else None,  # nats/token vs the reference; 0 = as natural
             exact_and_clean=mean(r["exact"] and is_clean(r) for r in g),
             hard_exact=mean(r["exact"] for r in hard) if hard else None,

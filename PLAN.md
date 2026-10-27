@@ -54,6 +54,9 @@ Recent work links the 25–150 Hz range to bone and tissue healing.
 | 4 | DPO | Preference pairs from the SFT model, then DPO | Done |
 | 5 | GRPO | RL against the reward below | Done |
 | 6 | SFT, secret spelled out | Step 3 with "Secret: F A D E D" and 4 epochs | Done: exact 0.77 val, 0.85 unseen secrets |
+| 7 | Fluency score v2 | Leave each sentence's forced first word out; tolerance 3 | Code done; run `07_fluency_score.ipynb` |
+| 8 | DPO from step 6 | As step 4, spelled-out secret, reward uses fluency v2 | After step 7 |
+| 9 | GRPO from step 6 | As step 5, spelled-out secret, reward uses fluency v2 | After step 7 |
 
 After each of steps 3–5, evaluate on `val` and add a row to the results table.
 
@@ -110,6 +113,23 @@ tokens are spelled, count sentences and pick the right letter, all invisibly.
 
 Fluency is a separate concern, to be handled after this (the fluency score clips nearly
 every acrostic answer to 0, so it gives GRPO no signal).
+
+### Step 7 — Fluency score v2
+The original score averages log-probability over every answer token and clips at 0 one
+nat/token below the reference. Acrostic answers are penalised for their forced opening
+words (improbable by design), and most land on the 0 floor (75 of 100 for step 6), so
+the score can't separate smooth answers from broken ones and gives GRPO no signal.
+- **`fluency_cont`:** each sentence's first word is left out of the average, in both the
+  answer and the reference; tolerance 3 nats/token; still capped at 1. Computed from the
+  same forward pass as the old score, which every table keeps for comparison.
+- **Check before use:** notebook 07 rescores answers from every earlier experiment. The
+  new score should keep no-secret answers near 1, lift acrostic answers off the floor and
+  spread them out; the extremes are read by hand. The tolerance is confirmed there.
+
+### Steps 8 and 9 — DPO and GRPO from step 6
+Both start from step 6's epoch-2 adapter (merged, plus a new LoRA), use the spelled-out
+prompt, the same 600 questions as steps 4–5, and `fluency_cont` in place of the old
+fluency term. Pilot first, as before. Evaluated on val and `test_words`.
 
 ## 5. Findings so far
 

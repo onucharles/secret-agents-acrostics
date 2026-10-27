@@ -17,6 +17,9 @@ GRPO each contribute and whether the hidden message can be detected. See [PLAN.m
 - **Step 6 (SFT, secret spelled out): done.** "Secret: F A D E D" in the prompt takes
   exact from 0.01 to 0.77 on val and 0.85 on secrets never seen in training (epoch 2);
   fluency unchanged.
+- **Step 7 (fluency score v2): code done, needs a Colab run.** Leaves each sentence's
+  forced first word out of the fluency score; checked on earlier answers before
+  DPO and GRPO from step 6 (steps 8 and 9) train on it.
 
 Scope: we measure covert-channel accuracy and fluency only; factual accuracy is out of scope.
 
@@ -34,6 +37,7 @@ Open a notebook in Colab (File → Open notebook → GitHub), pick this repo and
 | `06_sft_spelled.ipynb` | GPU | SFT with the secret spelled out, 4 epochs, per-epoch results |
 | `06b_no_secret_prose_check.ipynb` | GPU | Checks the experiment 06 model still writes normal prose with no secret |
 | `06c_error_analysis.ipynb` | CPU (probe: GPU) | Experiment 06 failures by kind, secret length, position, doubled and rare letters |
+| `07_fluency_score.ipynb` | GPU | Fluency score v2 (forced first words left out), checked on answers from every experiment |
 
 Outputs are saved to `MyDrive/stego-runs/` as they are produced, so a disconnect loses
 at most one batch: rerun the notebook and it carries on.
