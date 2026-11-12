@@ -1,4 +1,4 @@
-# cv-engineer
+# secret-agents-acrostics
 
 Steganographic post-training: teaching an open-weights assistant to answer questions
 normally while hiding a secret message in its answer, then measuring how SFT, DPO and
