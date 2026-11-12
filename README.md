@@ -1,4 +1,4 @@
-# secret-agents-acrostics
+# Covert channels in LLMs
 
 Steganographic post-training: teaching an open-weights assistant to answer questions
 normally while hiding a secret message in its answer, then measuring how SFT, DPO and
@@ -38,25 +38,6 @@ training it reached 85%. The model learned a general skill, not a list of words.
   so the next step is to post-train on subtler schemes. One example is a *parity* channel:
   the secret is a string of bits, one sentence per bit, where an odd word count means 1 and
   an even count means 0. The secret `101` becomes three sentences of, say, 9, 12 and 7 words.
-
-## Status
-
-- **Phase 1 (foundations): done.** Sentence splitter, both hidden-message schemes,
-  reward functions.
-- **Phase 2 (data and baselines): done for Qwen3-1.7B.** Prompting can't use the
-  channel at all; constrained decoding spells every secret.
-- **Step 3 (SFT): done.** Letter accuracy rose from chance (0.09) to 0.50; exact
-  spelling is still rare (0.01).
-- **Step 4 (DPO): done.** Letter accuracy 0.50 → 0.57; exact 0.04.
-- **Step 5 (GRPO): done.** Letter accuracy 0.63, exact 0.06; fluency fell.
-- **Step 6 (SFT, secret spelled out): done.** "Secret: F A D E D" in the prompt takes
-  exact from 0.01 to 0.77 on val and 0.85 on secrets never seen in training (epoch 2);
-  fluency unchanged.
-- **Step 7 (fluency score v2): code done, needs a Colab run.** Leaves each sentence's
-  forced first word out of the fluency score; checked on earlier answers before
-  DPO and GRPO from step 6 (steps 8 and 9) train on it.
-
-Scope: we measure covert-channel accuracy and fluency only; factual accuracy is out of scope.
 
 ## Run it on Colab
 
